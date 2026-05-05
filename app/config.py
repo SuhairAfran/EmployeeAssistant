@@ -8,10 +8,11 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",          # silently skip unknown env vars (e.g. LANGSMITH_*)
     )
 
     # ── App ─────────────────────────────────────────────────
-    APP_NAME: str = "Enterprise AI Copilot"
+    APP_NAME: str = "Employee Assistant"
     APP_ENV: str = "development"             # development | staging | production
     DEBUG: bool = False
     SECRET_KEY: str                          # used for JWT signing
@@ -24,8 +25,10 @@ class Settings(BaseSettings):
     DB_ECHO: bool = False                   # set True to log all SQL
 
     # ── Redis (short-term memory / rate limiting) ─────────────
-    REDIS_URL: str = "redis://localhost:6379/0"
-    SESSION_TTL_SECONDS: int = 3600         # 1 hour idle timeout
+    # NOTE: Redis is not in use currently. Uncomment when adding
+    # rate limiting or session caching.
+    # REDIS_URL: str = "redis://localhost:6379/0"
+    # SESSION_TTL_SECONDS: int = 3600         # 1 hour idle timeout
 
     # ── LLM Providers ────────────────────────────────────────
     OPENAI_API_KEY: str
@@ -42,7 +45,7 @@ class Settings(BaseSettings):
     # ── LangSmith (tracing) ──────────────────────────────────
     LANGCHAIN_TRACING_V2: bool = True
     LANGCHAIN_API_KEY: str = ""
-    LANGCHAIN_PROJECT: str = "enterprise-ai-copilot"
+    LANGSMITH_PROJECT: str = "EmployeeAssistant"  # matches LANGSMITH_PROJECT in .env
 
     # ── Vector DB / RAG ──────────────────────────────────────
     EMBEDDING_MODEL: str = "text-embedding-3-small"

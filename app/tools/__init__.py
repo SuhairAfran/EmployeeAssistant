@@ -51,6 +51,8 @@ def _get_tool_registry() -> dict:
         "submit_reimbursement":  (submit_reimbursement, "finance:claim:submit"),
         # Cross-department
         "record_approval":       (record_approval,      "hr:leave:approve"),
+        # RAG – permission checked, but the actual tool is role-bound at call time
+        "search_knowledge":      (None,                 "hr:policy:read"),
     }
 
 
@@ -62,7 +64,7 @@ INTENT_TOOL_MAP: dict[str, list[str]] = {
     "hr.leave_view_history":     ["get_leave_balance"],
     "hr.leave_cancel":           ["apply_leave"],
     "hr.leave_check_status":     ["get_leave_balance"],
-    "hr.policy_query":           [],   # RAG only, no transactional tools
+    "hr.policy_query":           ["search_knowledge"],   # RAG retrieval
     "it.ticket_create":          ["create_ticket"],
     "it.ticket_status":          ["create_ticket"],
     "it.ticket_view":            ["create_ticket"],
@@ -90,6 +92,8 @@ def get_tools_for_intent(intent: str, user_role: UserRole) -> list:
     Returns:
         List of callable tool objects that the LLM can bind to.
     """
+    from app.tools.rag_tools import create_rag_tool_with_role
+
     registry = _get_tool_registry()
     tool_keys = INTENT_TOOL_MAP.get(intent, [])
 
@@ -99,6 +103,10 @@ def get_tools_for_intent(intent: str, user_role: UserRole) -> list:
             continue
         tool_fn, required_perm = registry[key]
         if _has_permission(user_role, required_perm):
-            allowed_tools.append(tool_fn)
+            # For the RAG tool, create a role-bound instance dynamically
+            if key == "search_knowledge":
+                allowed_tools.append(create_rag_tool_with_role(user_role))
+            else:
+                allowed_tools.append(tool_fn)
 
     return allowed_tools

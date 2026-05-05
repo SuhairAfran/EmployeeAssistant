@@ -249,7 +249,7 @@ Be factual, cite sources when using documents, and respect the user's role permi
 
 
 async def execute_node(state: AgentState) -> AgentState:
-    from app.tools import get_tools_for_intent    # lazy import to avoid circular deps
+    from app.tools import get_tools_for_intent
 
     llm = get_llm(state.get("agent_used", "hr").split("_")[0])
     tools = get_tools_for_intent(state["intent"], state["user_role"])
@@ -275,6 +275,16 @@ async def execute_node(state: AgentState) -> AgentState:
     latency = int((time.time() - start) * 1000)
 
     tool_calls = []
+    
+    # ── NEW: Track state updates requested by tools ──
+    approval_required = False
+    approval_entity_type = None
+    approval_entity_id = None
+    email_triggered = False
+    email_recipients = []
+    email_subject = None
+    email_body = None
+
     if hasattr(result, "tool_calls") and result.tool_calls:
         for tc in result.tool_calls:
             tool_fn = next((t for t in tools if t.name == tc["name"]), None)
@@ -282,15 +292,56 @@ async def execute_node(state: AgentState) -> AgentState:
                 try:
                     tool_result = await tool_fn.ainvoke(tc["args"])
                     tool_calls.append({"name": tc["name"], "args": tc["args"], "result": tool_result})
+                    
+                    # ── NEW: Parse tool outputs to trigger graph nodes ──
+                    if isinstance(tool_result, dict):
+                        if tool_result.get("approval_required"):
+                            approval_required = True
+                            
+                            # Dynamically determine the entity type based on what ID was returned
+                            if "leave_id" in tool_result:
+                                approval_entity_type = "leave"
+                                approval_entity_id = str(tool_result["leave_id"])
+                            elif "ticket_id" in tool_result:
+                                approval_entity_type = "it_action"
+                                approval_entity_id = str(tool_result["ticket_id"])
+                            elif "request_id" in tool_result:
+                                approval_entity_type = "asset_request"
+                                approval_entity_id = str(tool_result["request_id"])
+                            elif "claim_id" in tool_result:
+                                approval_entity_type = "reimbursement"
+                                approval_entity_id = str(tool_result["claim_id"])
+                                
+                        if tool_result.get("email_triggered"):
+                            email_triggered = True
+                            email_recipients = tool_result.get("email_recipients", [])
+                            email_subject = tool_result.get("email_subject")
+                            email_body = tool_result.get("email_body")
+
                 except RBACViolation as e:
                     return {"error": str(e), "response": str(e), "response_type": "error"}
 
-    return {
+    # Compile the final state updates
+    state_update = {
         "messages": [*state.get("messages", []), HumanMessage(content=state["raw_query"]), result],
         "tool_calls": tool_calls,
         "response": result.content if isinstance(result.content, str) else str(result.content),
         "latency_ms": latency,
     }
+
+    # ── NEW: Inject parsed variables back into the AgentState ──
+    if approval_required:
+        state_update["approval_required"] = True
+        state_update["approval_entity_type"] = approval_entity_type
+        state_update["approval_entity_id"] = approval_entity_id
+        
+    if email_triggered:
+        state_update["email_triggered"] = True
+        state_update["email_recipients"] = email_recipients
+        state_update["email_subject"] = email_subject
+        state_update["email_body"] = email_body
+
+    return state_update
 
 
 # ── Node 6: GEPA — Evaluate ───────────────────────────────────────────────────

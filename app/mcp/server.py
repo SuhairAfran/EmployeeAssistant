@@ -81,10 +81,19 @@ class ApprovalInput(BaseModel):
 @mcp.tool(description="Apply for leave. Validates dates, checks overlaps and holiday calendar.")
 async def apply_leave(data: LeaveApplyInput) -> dict:
     from app.database import AsyncSessionLocal
-    from app.models import HolidayCalendar, LeaveBalance, LeaveRequest, LeaveType
+    from app.models import HolidayCalendar, LeaveBalance, LeaveRequest, LeaveType, User
+    from app.tools.email_tools import leave_request_email
     from sqlalchemy import and_, select
+    from datetime import timedelta
 
     async with AsyncSessionLocal() as db:
+        # ── NEW: Fetch User & Manager for Email Routing ──
+        user = await db.get(User, data.user_id)
+        if not user:
+            return {"success": False, "error": "User not found."}
+        
+        manager = await db.get(User, user.manager_id) if user.manager_id else None
+
         # 1. Validate leave type
         try:
             ltype = LeaveType(data.leave_type)
@@ -123,7 +132,6 @@ async def apply_leave(data: LeaveApplyInput) -> dict:
         )
         bdays = 0
         cur = data.start_date
-        from datetime import timedelta
         while cur <= data.end_date:
             if cur.weekday() < 5 and cur not in holidays:  # Mon–Fri, non-holiday
                 bdays += 1
@@ -160,6 +168,22 @@ async def apply_leave(data: LeaveApplyInput) -> dict:
         await db.commit()
         await db.refresh(leave)
 
+    # ── NEW: Generate Email Payload ──
+    email_data = {}
+    if manager:
+        # Generate an approval URL (in reality, this would point to your frontend UI)
+        approve_url = f"https://copilot.internal/approve?leave_id={leave.id}"
+        email_data = leave_request_email(
+            employee_name=user.full_name,
+            manager_email=manager.email,
+            leave_type=ltype.value,
+            start=str(data.start_date),
+            end=str(data.end_date),
+            days=float(bdays),
+            leave_id=str(leave.id),
+            approve_url=approve_url
+        )
+
     return {
         "success": True,
         "leave_id": str(leave.id),
@@ -167,6 +191,10 @@ async def apply_leave(data: LeaveApplyInput) -> dict:
         "status": "pending",
         "message": f"Leave applied successfully ({bdays} day(s)). Pending manager approval.",
         "approval_required": True,
+        "email_triggered": bool(manager),
+        "email_recipients": email_data.get("recipients", []),
+        "email_subject": email_data.get("subject", ""),
+        "email_body": email_data.get("body", ""),
     }
 
 

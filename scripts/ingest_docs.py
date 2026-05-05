@@ -64,6 +64,8 @@ import argparse
 import asyncio
 import os
 import sys
+import httpx
+sys.stdout.reconfigure(encoding='utf-8')
 from pathlib import Path
 
 # Ensure project root is on sys.path so `app.*` imports resolve
@@ -75,7 +77,7 @@ from openai import AsyncOpenAI
 from sqlalchemy import select, delete
 
 from app.config import settings
-from app.models import RAGDocument, RAGChunk, DocDepartment
+from app.models import RAGDocument, RAGChunk, DocDepartment, UserRole
 from app.database import AsyncSessionLocal
 
 # ── LangChain imports for loading and splitting ──────────────────────────────
@@ -89,18 +91,19 @@ RAG_DOCS_DIR = PROJECT_ROOT / "rag_docs"
 
 # Default RBAC mapping: which roles may see docs from each department.
 # You can override these per-file by placing a sidecar `.meta.json` later.
-DEFAULT_ROLES_BY_DEPT: dict[str, list[str]] = {
-    "hr":      ["employee", "manager", "hr_team", "admin"],
-    "it":      ["employee", "manager", "it_team", "admin"],
-    "finance": ["employee", "manager", "finance_team", "admin"],
-    "general": ["employee", "manager", "hr_team", "it_team", "finance_team", "admin"],
+DEFAULT_ROLES_BY_DEPT: dict[str, list[UserRole]] = {
+    "hr":      [UserRole.employee, UserRole.manager, UserRole.hr_team, UserRole.admin],
+    "it":      [UserRole.employee, UserRole.manager, UserRole.it_team, UserRole.admin],
+    "finance": [UserRole.employee, UserRole.manager, UserRole.finance_team, UserRole.admin],
+    "general": [UserRole.employee, UserRole.manager, UserRole.hr_team, UserRole.it_team, UserRole.finance_team, UserRole.admin],
 }
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md"}
 
 # OpenAI client (reads OPENAI_API_KEY from env automatically)
-openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+custom_http_client = httpx.AsyncClient(verify=False)
+openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY, http_client=custom_http_client)
 
 
 # ── Text Splitter ────────────────────────────────────────────────────────────

@@ -168,7 +168,7 @@ class User(TimestampMixin, Base):
     email:         Mapped[str]        = mapped_column(String(255), unique=True, nullable=False)
     full_name:     Mapped[str]        = mapped_column(String(200), nullable=False)
     password_hash: Mapped[str]        = mapped_column(Text, nullable=False)
-    role:          Mapped[UserRole]   = mapped_column(Enum(UserRole), default=UserRole.employee, nullable=False)
+    role:          Mapped[UserRole]   = mapped_column(Enum(UserRole, name="user_role"), default=UserRole.employee, nullable=False)
     department_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("departments.id"))
     manager_id:    Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     designation:   Mapped[str | None] = mapped_column(String(150))
@@ -182,11 +182,11 @@ class User(TimestampMixin, Base):
     )
     manager:    Mapped["User | None"]       = relationship("User", remote_side="User.id",
                                                            foreign_keys=[manager_id])
-    leave_requests:  Mapped[list["LeaveRequest"]]  = relationship(back_populates="user")
+    leave_requests:  Mapped[list["LeaveRequest"]]  = relationship(back_populates="user", foreign_keys="LeaveRequest.user_id")
     tickets:         Mapped[list["ITTicket"]]       = relationship(back_populates="user",
                                                                    foreign_keys="ITTicket.user_id")
-    asset_requests:  Mapped[list["AssetRequest"]]  = relationship(back_populates="user")
-    reimbursements:  Mapped[list["Reimbursement"]] = relationship(back_populates="user")
+    asset_requests:  Mapped[list["AssetRequest"]]  = relationship(back_populates="user", foreign_keys="AssetRequest.user_id")
+    reimbursements:  Mapped[list["Reimbursement"]] = relationship(back_populates="user", foreign_keys="Reimbursement.user_id")
     memory_entries:  Mapped[list["UserMemory"]]    = relationship(back_populates="user")
 
     def has_permission(self, perm_code: str) -> bool:
@@ -207,7 +207,7 @@ class Permission(Base):
 class RolePermission(Base):
     __tablename__ = "role_permissions"
 
-    role:    Mapped[UserRole]  = mapped_column(Enum(UserRole), primary_key=True)
+    role:    Mapped[UserRole]  = mapped_column(Enum(UserRole, name="user_role"), primary_key=True)
     perm_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True),
                                                ForeignKey("permissions.id", ondelete="CASCADE"),
                                                primary_key=True)
@@ -222,7 +222,7 @@ class LeaveBalance(Base):
     id:            Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id:       Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     year:          Mapped[int]
-    leave_type:    Mapped[LeaveType] = mapped_column(Enum(LeaveType), nullable=False)
+    leave_type:    Mapped[LeaveType] = mapped_column(Enum(LeaveType, name="leave_type"), nullable=False)
     entitled_days: Mapped[float]     = mapped_column(Numeric(5, 1), default=0)
     used_days:     Mapped[float]     = mapped_column(Numeric(5, 1), default=0)
     pending_days:  Mapped[float]     = mapped_column(Numeric(5, 1), default=0)
@@ -243,12 +243,12 @@ class LeaveRequest(TimestampMixin, Base):
 
     id:            Mapped[uuid.UUID]    = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id:       Mapped[uuid.UUID]    = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    leave_type:    Mapped[LeaveType]    = mapped_column(Enum(LeaveType), nullable=False)
+    leave_type:    Mapped[LeaveType]    = mapped_column(Enum(LeaveType, name="leave_type"), nullable=False)
     start_date:    Mapped[date]         = mapped_column(Date, nullable=False)
     end_date:      Mapped[date]         = mapped_column(Date, nullable=False)
     business_days: Mapped[float]        = mapped_column(Numeric(4, 1), nullable=False)
     reason:        Mapped[str | None]   = mapped_column(Text)
-    status:        Mapped[LeaveStatus]  = mapped_column(Enum(LeaveStatus), default=LeaveStatus.pending)
+    status:        Mapped[LeaveStatus]  = mapped_column(Enum(LeaveStatus, name="leave_status"), default=LeaveStatus.pending)
     applied_at:    Mapped[datetime]     = mapped_column(DateTime(timezone=True), server_default=func.now())
     reviewed_by:   Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     reviewed_at:   Mapped[datetime | None]  = mapped_column(DateTime(timezone=True))
@@ -276,11 +276,11 @@ class ITTicket(TimestampMixin, Base):
     id:             Mapped[uuid.UUID]      = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ticket_no:      Mapped[str]            = mapped_column(String(20), unique=True, nullable=False)
     user_id:        Mapped[uuid.UUID]      = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    category:       Mapped[TicketCategory] = mapped_column(Enum(TicketCategory), nullable=False)
+    category:       Mapped[TicketCategory] = mapped_column(Enum(TicketCategory, name="ticket_category"), nullable=False)
     subject:        Mapped[str]            = mapped_column(String(500), nullable=False)
     description:    Mapped[str]            = mapped_column(Text, nullable=False)
-    priority:       Mapped[TicketPriority] = mapped_column(Enum(TicketPriority), default=TicketPriority.medium)
-    status:         Mapped[TicketStatus]   = mapped_column(Enum(TicketStatus), default=TicketStatus.open)
+    priority:       Mapped[TicketPriority] = mapped_column(Enum(TicketPriority, name="ticket_priority"), default=TicketPriority.medium)
+    status:         Mapped[TicketStatus]   = mapped_column(Enum(TicketStatus, name="ticket_status"), default=TicketStatus.open)
     assigned_to:    Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     parent_ticket:  Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("it_tickets.id"))
     resolution:     Mapped[str | None]     = mapped_column(Text)
@@ -324,7 +324,7 @@ class KnownIssue(Base):
 
     id:          Mapped[uuid.UUID]      = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title:       Mapped[str]            = mapped_column(String(300), nullable=False)
-    category:    Mapped[TicketCategory] = mapped_column(Enum(TicketCategory), nullable=False)
+    category:    Mapped[TicketCategory] = mapped_column(Enum(TicketCategory, name="ticket_category"), nullable=False)
     description: Mapped[str]            = mapped_column(Text, nullable=False)
     workaround:  Mapped[str | None]     = mapped_column(Text)
     is_active:   Mapped[bool]           = mapped_column(Boolean, default=True)
@@ -337,11 +337,11 @@ class ITInventory(TimestampMixin, Base):
 
     id:            Mapped[uuid.UUID]  = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     asset_tag:     Mapped[str]        = mapped_column(String(50), unique=True, nullable=False)
-    asset_type:    Mapped[AssetType]  = mapped_column(Enum(AssetType), nullable=False)
+    asset_type:    Mapped[AssetType]  = mapped_column(Enum(AssetType, name="asset_type"), nullable=False)
     brand:         Mapped[str | None] = mapped_column(String(100))
     model:         Mapped[str | None] = mapped_column(String(200))
     serial_no:     Mapped[str | None] = mapped_column(String(100), unique=True)
-    status:        Mapped[AssetStatus] = mapped_column(Enum(AssetStatus), default=AssetStatus.available)
+    status:        Mapped[AssetStatus] = mapped_column(Enum(AssetStatus, name="asset_status"), default=AssetStatus.available)
     assigned_to:   Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     assigned_at:   Mapped[datetime | None]  = mapped_column(DateTime(timezone=True))
     purchase_date: Mapped[date | None]      = mapped_column(Date)
@@ -355,9 +355,9 @@ class AssetRequest(TimestampMixin, Base):
 
     id:            Mapped[uuid.UUID]    = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id:       Mapped[uuid.UUID]    = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    asset_type:    Mapped[AssetType]    = mapped_column(Enum(AssetType), nullable=False)
+    asset_type:    Mapped[AssetType]    = mapped_column(Enum(AssetType, name="asset_type"), nullable=False)
     justification: Mapped[str]          = mapped_column(Text, nullable=False)
-    status:        Mapped[RequestStatus] = mapped_column(Enum(RequestStatus), default=RequestStatus.pending)
+    status:        Mapped[RequestStatus] = mapped_column(Enum(RequestStatus, name="request_status"), default=RequestStatus.pending)
     manager_id:    Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     manager_action: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     manager_note:  Mapped[str | None]   = mapped_column(Text)
@@ -401,13 +401,13 @@ class Reimbursement(TimestampMixin, Base):
     id:            Mapped[uuid.UUID]             = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     claim_no:      Mapped[str]                   = mapped_column(String(20), unique=True, nullable=False)
     user_id:       Mapped[uuid.UUID]             = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    category:      Mapped[ReimbursementCategory] = mapped_column(Enum(ReimbursementCategory), nullable=False)
+    category:      Mapped[ReimbursementCategory] = mapped_column(Enum(ReimbursementCategory, name="reimbursement_category"), nullable=False)
     amount:        Mapped[float]                 = mapped_column(Numeric(10, 2), nullable=False)
     currency:      Mapped[str]                   = mapped_column(String(3), default="INR")
     description:   Mapped[str]                   = mapped_column(Text, nullable=False)
     expense_date:  Mapped[date]                  = mapped_column(Date, nullable=False)
     receipt_url:   Mapped[str | None]            = mapped_column(Text)
-    status:        Mapped[ReimbursementStatus]   = mapped_column(Enum(ReimbursementStatus), default=ReimbursementStatus.draft)
+    status:        Mapped[ReimbursementStatus]   = mapped_column(Enum(ReimbursementStatus, name="reimbursement_status"), default=ReimbursementStatus.draft)
     submitted_at:  Mapped[datetime | None]       = mapped_column(DateTime(timezone=True))
     reviewed_by:   Mapped[uuid.UUID | None]      = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     reviewed_at:   Mapped[datetime | None]       = mapped_column(DateTime(timezone=True))
@@ -424,11 +424,11 @@ class Approval(Base):
     __tablename__ = "approvals"
 
     id:          Mapped[uuid.UUID]      = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    entity_type: Mapped[ApprovalEntity] = mapped_column(Enum(ApprovalEntity), nullable=False)
+    entity_type: Mapped[ApprovalEntity] = mapped_column(Enum(ApprovalEntity, name="approval_entity"), nullable=False)
     entity_id:   Mapped[uuid.UUID]      = mapped_column(UUID(as_uuid=True), nullable=False)
     approver_id: Mapped[uuid.UUID]      = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     step:        Mapped[int]            = mapped_column(Integer, default=1)
-    decision:    Mapped[ApprovalDecision] = mapped_column(Enum(ApprovalDecision), default=ApprovalDecision.pending)
+    decision:    Mapped[ApprovalDecision] = mapped_column(Enum(ApprovalDecision, name="approval_decision"), default=ApprovalDecision.pending)
     note:        Mapped[str | None]     = mapped_column(Text)
     decided_at:  Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at:  Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -473,9 +473,9 @@ class RAGDocument(Base):
 
     id:            Mapped[uuid.UUID]    = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     filename:      Mapped[str]          = mapped_column(String(500), nullable=False)
-    department:    Mapped[DocDepartment] = mapped_column(Enum(DocDepartment), nullable=False)
+    department:    Mapped[DocDepartment] = mapped_column(Enum(DocDepartment, name="doc_department"), nullable=False)
     doc_type:      Mapped[str | None]   = mapped_column(String(100))
-    roles_allowed: Mapped[list]         = mapped_column(ARRAY(String), default=["employee"])
+    roles_allowed: Mapped[list[UserRole]] = mapped_column(ARRAY(Enum(UserRole, name="user_role", create_constraint=False)), default=[UserRole.employee])
     file_url:      Mapped[str | None]   = mapped_column(Text)
     ingested_at:   Mapped[datetime]     = mapped_column(DateTime(timezone=True), server_default=func.now())
     is_active:     Mapped[bool]         = mapped_column(Boolean, default=True)
