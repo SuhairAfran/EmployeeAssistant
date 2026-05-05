@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict, Dict, Optional
 
 from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
 
 from app.models import UserRole
 
