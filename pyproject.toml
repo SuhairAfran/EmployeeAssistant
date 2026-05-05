@@ -1,0 +1,80 @@
+[tool.poetry]
+name = "enterprise-ai-copilot"
+version = "1.0.0"
+description = "Enterprise Multi-Agent AI Copilot for HR, IT & Finance Operations"
+authors = ["Your Name <you@company.com>"]
+python = "^3.11"
+
+[tool.poetry.dependencies]
+python            = "^3.11"
+
+# ── Web framework ────────────────────────────────────────────────
+fastapi           = "^0.115"
+uvicorn           = {extras = ["standard"], version = "^0.30"}
+httpx             = "^0.27"            # async HTTP (Power Automate calls)
+
+# ── AI / Agents ──────────────────────────────────────────────────
+langchain         = "^0.3"
+langchain-openai  = "^0.2"
+langchain-anthropic = "^0.3"          # optional: Claude models
+langgraph         = "^0.2"
+langsmith         = "^0.1"
+fastmcp           = "^2.0"
+openai            = "^1.40"
+
+# ── RAG ──────────────────────────────────────────────────────────
+chromadb          = "^0.5"            # local vector DB (dev)
+pgvector          = "^0.3"            # pgvector ORM extension
+unstructured      = {extras = ["pdf", "docx"], version = "^0.15"}
+langchain-text-splitters = "^0.3"     # RecursiveCharacterTextSplitter
+langchain-community = "^0.3"         # document loaders (PDF, DOCX, etc.)
+
+# ── Database ─────────────────────────────────────────────────────
+sqlalchemy        = {extras = ["asyncio"], version = "^2.0"}
+asyncpg           = "^0.29"           # async PostgreSQL driver
+alembic           = "^1.13"
+
+# ── Cache / Session ───────────────────────────────────────────────
+redis             = "^5.0"
+hiredis           = "^2.3"            # C parser for redis (faster)
+
+# ── Auth ──────────────────────────────────────────────────────────
+pyjwt             = {extras = ["crypto"], version = "^2.8"}
+passlib           = {extras = ["bcrypt"], version = "^1.7"}
+
+# ── Config / Validation ───────────────────────────────────────────
+pydantic          = "^2.8"
+pydantic-settings = "^2.4"
+
+# ── Logging / Observability ───────────────────────────────────────
+structlog         = "^24.4"
+python-json-logger = "^2.0"
+
+# ── Utilities ─────────────────────────────────────────────────────
+python-multipart  = "^0.0.9"          # file upload support
+aiofiles          = "^24.1"
+
+[tool.poetry.dev-dependencies]
+pytest             = "^8.0"
+pytest-asyncio     = "^0.23"
+pytest-cov         = "^5.0"
+httpx              = "^0.27"          # for TestClient
+ruff               = "^0.5"           # linter + formatter
+mypy               = "^1.10"
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

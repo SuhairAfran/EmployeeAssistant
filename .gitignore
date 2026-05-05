@@ -1,0 +1,28 @@
+# Environments
+.env
+.venv/
+env/
+venv/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing / Profiling
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Linters / Type Checkers
+.ruff_cache/
+.mypy_cache/
+
+# Local Vector DB (if you test Chroma locally)
+chroma_db/
+
+# IDEs and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
