@@ -30,17 +30,20 @@ class Settings(BaseSettings):
     SESSION_TTL_SECONDS: int = 3600         # 1 hour idle timeout
 
     # ── LLM Providers ────────────────────────────────────────
-    OPENAI_API_KEY: str
+    OPENAI_API_KEY: str = ""                 # optional — only if using OpenAI models
     ANTHROPIC_API_KEY: str = ""
+    XAI_API_KEY: str = ""                    # Grok (xAI)
+    GOOGLE_API_KEY: str = ""                 # Gemini
     OPENAI_BASE_URL: str | None = None
     OPENAI_VERIFY_SSL: bool = True
 
     # Dynamic routing: which model for which task
-    LLM_INTENT: str = "gpt-4o-mini"         # fast, cheap intent classification
-    LLM_HR: str = "gpt-4o"                  # balanced for HR conversations
-    LLM_IT: str = "gpt-4o-mini"             # fast for IT support
-    LLM_FINANCE: str = "gpt-4o"             # strong reasoning for calculations
-    LLM_EVALUATOR: str = "gpt-4o-mini"      # GEPA self-evaluation node
+    # Prefix determines the provider: grok-* → xAI, gemini-* → Google, gpt-* → OpenAI
+    LLM_INTENT: str = "grok-3-mini-fast"    # fast, cheap intent classification
+    LLM_HR: str = "gemini-2.5-flash"        # balanced for HR conversations
+    LLM_IT: str = "grok-3-mini-fast"        # fast for IT support
+    LLM_FINANCE: str = "gemini-2.5-flash"   # strong reasoning for calculations
+    LLM_EVALUATOR: str = "grok-3-mini-fast" # GEPA self-evaluation node
     LLM_TEMPERATURE: float = 0.1            # low temp for enterprise accuracy
 
     # ── LangSmith (tracing) ──────────────────────────────────

@@ -1,50 +1,6 @@
 """
 LangGraph Workflow — with GEPA pattern
 ======================================
-
-Graph shape:
-                      ┌─────────────┐
-                      │ intent_node │  (cheap model: gpt-4o-mini)
-                      └──────┬──────┘
-                             │
-                      ┌──────▼──────┐
-                      │  role_check │  (RBAC gate — no LLM needed)
-                      └──────┬──────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-         hr_agent       it_agent     finance_agent
-              └──────────────┼──────────────┘
-                             │
-                      ┌──────▼──────┐
-                  ┌───│  plan_node  │ ◄──── retry_critique
-                  │   └──────┬──────┘
-                  │          │ GEPA Plan
-                  │   ┌──────▼──────┐
-                  │   │ execute_node│  (tools + RAG)
-                  │   └──────┬──────┘
-                  │          │
-                  │   ┌──────▼──────┐
-                  │   │  eval_node  │  (GEPA Evaluate)
-                  │   └──────┬──────┘
-                  │          │ score < threshold → retry
-                  └──────────┘
-                             │ score ≥ threshold
-                      ┌──────▼──────┐
-                      │human_in_loop│  (interrupt() if approval needed)
-                      └──────┬──────┘
-                             │
-                      ┌──────▼──────┐
-                      │email_notify │
-                      └──────┬──────┘
-                             │
-                      ┌──────▼──────┐
-                      │ save_memory │
-                      └──────┬──────┘
-                             │
-                      ┌──────▼──────┐
-                      │   respond   │
-                      └─────────────┘
 """
 from __future__ import annotations
 
@@ -54,7 +10,7 @@ import uuid
 from typing import Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
@@ -65,27 +21,45 @@ from app.middleware import RBACViolation, rbac_guard
 from app.models import UserRole
 
 
-# ── LLM instances (dynamic routing) ──────────────────────────────────────────
+# ── LLM instances (multi-provider: Grok, Gemini, OpenAI) ─────────────────────
 
-def get_llm(model_key: str, temperature: float = settings.LLM_TEMPERATURE) -> ChatOpenAI:
+def get_llm(model_key: str, temperature: float = settings.LLM_TEMPERATURE) -> BaseChatModel:
+    """Create the right LLM client based on model name prefix."""
     model_name = getattr(settings, f"LLM_{model_key.upper()}", settings.LLM_HR)
-    
-    # Optional kwargs for custom LLM proxy / disabling SSL verification
+
+    # Optional kwargs for disabling SSL verification (needed for some proxies)
     kwargs = {}
     if not settings.OPENAI_VERIFY_SSL:
         import httpx
         kwargs["http_client"] = httpx.Client(verify=False)
         kwargs["http_async_client"] = httpx.AsyncClient(verify=False)
-    
-    if settings.OPENAI_BASE_URL:
-        kwargs["base_url"] = settings.OPENAI_BASE_URL
 
-    return ChatOpenAI(
-        model=model_name,
-        temperature=temperature,
-        api_key=settings.OPENAI_API_KEY,
-        **kwargs
-    )
+    if model_name.startswith("grok"):
+        from langchain_xai import ChatXAI
+        return ChatXAI(
+            model=model_name,
+            temperature=temperature,
+            xai_api_key=settings.XAI_API_KEY,
+            **kwargs
+        )
+    elif model_name.startswith("gemini"):
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        # Gemini uses a different underlying client, usually respects system certs
+        # but if needed, we can set transport. For now, we instantiate normally.
+        return ChatGoogleGenerativeAI(
+            model=model_name,
+            temperature=temperature,
+            google_api_key=settings.GOOGLE_API_KEY,
+        )
+    else:
+        # Fallback: OpenAI-compatible (gpt-*, o1-*, etc.)
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=model_name,
+            temperature=temperature,
+            api_key=settings.OPENAI_API_KEY,
+            **kwargs
+        )
 
 
 # ── Node 1: Intent detection ──────────────────────────────────────────────────
@@ -140,11 +114,12 @@ INTENT_PERM_MAP: dict[str, str] = {
     "finance.tax_query":         "finance:tax:view_own",
 }
 
+# --- FIX: Changed "general" to map to "plan_node" instead of "unknown" ---
 INTENT_ROUTE_MAP: dict[str, str] = {
     "hr":      "hr_agent",
     "it":      "it_agent",
     "finance": "finance_agent",
-    "general": "unknown",
+    "general": "plan_node", 
 }
 
 
@@ -159,23 +134,27 @@ async def role_check_node(state: AgentState) -> AgentState:
                 "error": str(e),
                 "response": "You don't have permission to perform this action.",
                 "response_type": "error",
-                "route_to": "unknown",
+                "route_to": "respond", # Changed to route to respond on error
             }
-    # Derive routing from intent prefix
+            
+    # Derive routing from intent prefix. Fallback to plan_node if completely unknown.
     prefix = intent.split(".")[0]
-    return {"route_to": INTENT_ROUTE_MAP.get(prefix, "unknown")}
+    return {"route_to": INTENT_ROUTE_MAP.get(prefix, "plan_node")}
 
 
-def route_after_role_check(state: AgentState) -> Literal[
-    "hr_agent", "it_agent", "finance_agent", "plan_node", "respond"
-]:
+def route_after_role_check(state: AgentState) -> str:
+    # --- FIX: Ensure we only return valid graph nodes ---
     if state.get("error"):
         return "respond"
-    return state.get("route_to", "respond")  # type: ignore
+        
+    route = state.get("route_to", "plan_node")
+    if route not in ["hr_agent", "it_agent", "finance_agent", "plan_node", "respond"]:
+        return "plan_node"
+        
+    return route
 
 
 # ── Nodes 3a/3b/3c: Department context nodes ──────────────────────────────────
-# These add department-specific context to the state before GEPA planning.
 
 async def hr_agent_node(state: AgentState) -> AgentState:
     return {
@@ -247,7 +226,7 @@ async def plan_node(state: AgentState) -> AgentState:
 # ── Node 5: Execute (tools + RAG) ─────────────────────────────────────────────
 
 EXECUTE_SYSTEM = """You are an enterprise AI assistant. Follow the plan and call the
-appropriate tools to answer the user's request accurately.
+appropriate tools to answer the user's request accurately. If the user is just greeting you, respond politely.
 
 User context:
 - Name: {user_name}
@@ -288,7 +267,6 @@ async def execute_node(state: AgentState) -> AgentState:
 
     tool_calls = []
     
-    # ── NEW: Track state updates requested by tools ──
     approval_required = False
     approval_entity_type = None
     approval_entity_id = None
@@ -305,12 +283,9 @@ async def execute_node(state: AgentState) -> AgentState:
                     tool_result = await tool_fn.ainvoke(tc["args"])
                     tool_calls.append({"name": tc["name"], "args": tc["args"], "result": tool_result})
                     
-                    # ── NEW: Parse tool outputs to trigger graph nodes ──
                     if isinstance(tool_result, dict):
                         if tool_result.get("approval_required"):
                             approval_required = True
-                            
-                            # Dynamically determine the entity type based on what ID was returned
                             if "leave_id" in tool_result:
                                 approval_entity_type = "leave"
                                 approval_entity_id = str(tool_result["leave_id"])
@@ -333,7 +308,6 @@ async def execute_node(state: AgentState) -> AgentState:
                 except RBACViolation as e:
                     return {"error": str(e), "response": str(e), "response_type": "error"}
 
-    # Compile the final state updates
     state_update = {
         "messages": [*state.get("messages", []), HumanMessage(content=state["raw_query"]), result],
         "tool_calls": tool_calls,
@@ -341,7 +315,6 @@ async def execute_node(state: AgentState) -> AgentState:
         "latency_ms": latency,
     }
 
-    # ── NEW: Inject parsed variables back into the AgentState ──
     if approval_required:
         state_update["approval_required"] = True
         state_update["approval_entity_type"] = approval_entity_type
@@ -377,7 +350,6 @@ Respond ONLY with JSON:
 
 async def eval_node(state: AgentState) -> AgentState:
     if state.get("error"):
-        # Don't evaluate error states
         return {"eval_score": {"score": 0.0, "relevance": 0.0, "completeness": 0.0,
                                "rbac_compliant": True, "critique": ""}}
 
@@ -400,22 +372,16 @@ def route_after_eval(state: AgentState) -> Literal["plan_node", "human_in_loop"]
     retry_count = state.get("retry_count", 0)
 
     if score < settings.GEPA_EVAL_THRESHOLD and retry_count < settings.GEPA_MAX_RETRIES:
-        return "plan_node"   # loop back with critique
+        return "plan_node"
     return "human_in_loop"
 
 
 # ── Node 7: Human-in-loop ─────────────────────────────────────────────────────
 
 async def human_in_loop_node(state: AgentState) -> AgentState:
-    """
-    If approval is required, pause the graph via interrupt().
-    The graph resumes when the approver's decision is injected
-    via graph.invoke(Command(resume={"decision": "approved", "note": "..."})).
-    """
     if not state.get("approval_required"):
         return {}
 
-    # Pause here — LangGraph serialises state and waits
     decision_input = interrupt({
         "message": f"Approval required for {state.get('approval_entity_type')}",
         "entity_id": state.get("approval_entity_id"),
@@ -470,7 +436,6 @@ async def save_memory_node(state: AgentState) -> AgentState:
 # ── Node 10: Final respond ────────────────────────────────────────────────────
 
 async def respond_node(state: AgentState) -> AgentState:
-    """Append the final AI response to the message history."""
     if state.get("response"):
         return {
             "messages": [
@@ -486,7 +451,6 @@ async def respond_node(state: AgentState) -> AgentState:
 def build_workflow() -> StateGraph:
     graph = StateGraph(AgentState)
 
-    # Register all nodes
     graph.add_node("intent_node",       intent_node)
     graph.add_node("role_check",        role_check_node)
     graph.add_node("hr_agent",          hr_agent_node)
@@ -500,11 +464,11 @@ def build_workflow() -> StateGraph:
     graph.add_node("save_memory",       save_memory_node)
     graph.add_node("respond",           respond_node)
 
-    # Entry
     graph.set_entry_point("intent_node")
 
-    # Linear edges
     graph.add_edge("intent_node", "role_check")
+    
+    # --- FIX: Match the explicit mapping to the safe string return values ---
     graph.add_conditional_edges("role_check", route_after_role_check, {
         "hr_agent":      "hr_agent",
         "it_agent":      "it_agent",
@@ -513,16 +477,14 @@ def build_workflow() -> StateGraph:
         "respond":       "respond",
     })
 
-    # Department nodes → plan
     for dept in ("hr_agent", "it_agent", "finance_agent"):
         graph.add_edge(dept, "plan_node")
 
     graph.add_edge("plan_node",    "execute_node")
     graph.add_edge("execute_node", "eval_node")
 
-    # GEPA conditional: retry or proceed
     graph.add_conditional_edges("eval_node", route_after_eval, {
-        "plan_node":     "plan_node",    # retry with critique
+        "plan_node":     "plan_node",
         "human_in_loop": "human_in_loop",
     })
 
@@ -531,28 +493,14 @@ def build_workflow() -> StateGraph:
     graph.add_edge("save_memory",   "respond")
     graph.add_edge("respond",       END)
 
-    # Checkpointer enables interrupt() + resume
     checkpointer = MemorySaver()
     return graph.compile(checkpointer=checkpointer, interrupt_before=["human_in_loop"])
 
-
-# ── Singleton graph instance ──────────────────────────────────────────────────
 
 workflow = build_workflow()
 
 
 async def run_workflow(user_ctx: dict, query: str, session_id: str | None = None) -> AgentState:
-    """
-    Entry point for the chat API route.
-
-    Args:
-        user_ctx: dict from enrich_request() dependency
-        query:    raw user message
-        session_id: existing session ID (for multi-turn) or None for new session
-
-    Returns:
-        Final AgentState with 'response' populated.
-    """
     sid = session_id or str(uuid.uuid4())
     state = initial_state(user_ctx, query, session_id=sid)
 
