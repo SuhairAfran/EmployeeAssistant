@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import AnyHttpUrl, PostgresDsn, field_validator
@@ -25,10 +26,8 @@ class Settings(BaseSettings):
     DB_ECHO: bool = False                   # set True to log all SQL
 
     # ── Redis (short-term memory / rate limiting) ─────────────
-    # NOTE: Redis is not in use currently. Uncomment when adding
-    # rate limiting or session caching.
-    # REDIS_URL: str = "redis://localhost:6379/0"
-    # SESSION_TTL_SECONDS: int = 3600         # 1 hour idle timeout
+    REDIS_URL: str = "redis://localhost:6379/0"
+    SESSION_TTL_SECONDS: int = 3600         # 1 hour idle timeout
 
     # ── LLM Providers ────────────────────────────────────────
     OPENAI_API_KEY: str
@@ -88,3 +87,9 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+# Inject LangSmith settings directly into OS environment for LangChain under-the-hood tracking
+if settings.LANGCHAIN_TRACING_V2 and settings.LANGCHAIN_API_KEY:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
+    os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT

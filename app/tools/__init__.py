@@ -2,8 +2,11 @@ from typing import List
 from langchain_core.tools import BaseTool
 from app.models import UserRole
 
-# Import the RAG tool we just created
+# Import all domain tools
 from app.tools.rag_tools import search_company_policies
+from app.tools.hr_tools import get_leave_balance, apply_for_leave, cancel_leave
+from app.tools.it_tools import create_it_ticket, get_ticket_status, request_it_asset
+from app.tools.finance_tools import fetch_payslip, submit_reimbursement
 
 def get_tools_for_intent(intent: str, user_role: UserRole) -> List[BaseTool]:
     """
@@ -18,22 +21,14 @@ def get_tools_for_intent(intent: str, user_role: UserRole) -> List[BaseTool]:
         
     # 2. HR Tools
     if intent.startswith("hr.leave"):
-        tools.append(get_leave_balance)
-        tools.append(apply_for_leave)
-        tools.append(cancel_leave)
-        pass
+        tools.extend([get_leave_balance, apply_for_leave, cancel_leave])
         
     # 3. IT Tools
     elif intent.startswith("it"):
-        tools.append(create_it_ticket)
-        tools.append(check_ticket_status)
-        tools.append(request_it_asset)
-        pass
+        tools.extend([create_it_ticket, get_ticket_status, request_it_asset])
         
     # 4. Finance Tools
     elif intent.startswith("finance"):
-        # tools.append(fetch_payslip)
-        # tools.append(submit_reimbursement)
-        pass
+        tools.extend([fetch_payslip, submit_reimbursement])
         
     return tools
