@@ -24,42 +24,34 @@ from app.models import UserRole
 # ── LLM instances (multi-provider: Grok, Gemini, OpenAI) ─────────────────────
 
 def get_llm(model_key: str, temperature: float = settings.LLM_TEMPERATURE) -> BaseChatModel:
-    """Create the right LLM client based on model name prefix."""
+    """Create a pure Gemini LLM client based on the requested model key."""
     model_name = getattr(settings, f"LLM_{model_key.upper()}", settings.LLM_HR)
 
-    # Optional kwargs for disabling SSL verification (needed for some proxies)
+    # Keep SSL fallback logic available in case we need to pass custom clients in the future
     kwargs = {}
-    if not settings.OPENAI_VERIFY_SSL:
+    verify_ssl = getattr(settings, "OPENAI_VERIFY_SSL", True)
+    if not verify_ssl:
         import httpx
         kwargs["http_client"] = httpx.Client(verify=False)
         kwargs["http_async_client"] = httpx.AsyncClient(verify=False)
 
-    if model_name.startswith("grok"):
-        from langchain_xai import ChatXAI
-        return ChatXAI(
-            model=model_name,
-            temperature=temperature,
-            xai_api_key=settings.XAI_API_KEY,
-            **kwargs
-        )
-    elif model_name.startswith("gemini"):
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        # Gemini uses a different underlying client, usually respects system certs
-        # but if needed, we can set transport. For now, we instantiate normally.
-        return ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=temperature,
-            google_api_key=settings.GOOGLE_API_KEY,
-        )
-    else:
-        # Fallback: OpenAI-compatible (gpt-*, o1-*, etc.)
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=model_name,
-            temperature=temperature,
-            api_key=settings.OPENAI_API_KEY,
-            **kwargs
-        )
+    # --- Gemini Setup (Commented out) ---
+    # from langchain_google_genai import ChatGoogleGenerativeAI
+    # return ChatGoogleGenerativeAI(
+    #     model=model_name,
+    #     temperature=temperature,
+    #     google_api_key=settings.GOOGLE_API_KEY,
+    #     transport="rest"
+    # )
+
+    # --- OpenAI Setup (Active) ---
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(
+        model=model_name,
+        temperature=temperature,
+        api_key=settings.OPENAI_API_KEY,
+        **kwargs
+    )
 
 
 # ── Node 1: Intent detection ──────────────────────────────────────────────────
@@ -114,7 +106,6 @@ INTENT_PERM_MAP: dict[str, str] = {
     "finance.tax_query":         "finance:tax:view_own",
 }
 
-# --- FIX: Changed "general" to map to "plan_node" instead of "unknown" ---
 INTENT_ROUTE_MAP: dict[str, str] = {
     "hr":      "hr_agent",
     "it":      "it_agent",
@@ -134,7 +125,7 @@ async def role_check_node(state: AgentState) -> AgentState:
                 "error": str(e),
                 "response": "You don't have permission to perform this action.",
                 "response_type": "error",
-                "route_to": "respond", # Changed to route to respond on error
+                "route_to": "respond", 
             }
             
     # Derive routing from intent prefix. Fallback to plan_node if completely unknown.
@@ -143,7 +134,6 @@ async def role_check_node(state: AgentState) -> AgentState:
 
 
 def route_after_role_check(state: AgentState) -> str:
-    # --- FIX: Ensure we only return valid graph nodes ---
     if state.get("error"):
         return "respond"
         
@@ -468,7 +458,6 @@ def build_workflow() -> StateGraph:
 
     graph.add_edge("intent_node", "role_check")
     
-    # --- FIX: Match the explicit mapping to the safe string return values ---
     graph.add_conditional_edges("role_check", route_after_role_check, {
         "hr_agent":      "hr_agent",
         "it_agent":      "it_agent",
