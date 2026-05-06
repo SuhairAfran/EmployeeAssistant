@@ -71,14 +71,46 @@ def decode_access_token(token: str) -> dict:
 
 # ── FastAPI dependencies ───────────────────────────────────────────────────────
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Decode JWT, load user from DB, verify active status."""
+    """Decode JWT, load user from DB, verify active status. Supports X-Mock-Role in DEBUG mode."""
+    # 1. Check for mock header in DEBUG mode
+    if settings.DEBUG and "x-mock-role" in request.headers:
+        role_str = request.headers.get("x-mock-role", "employee")
+        try:
+            role_enum = UserRole(role_str)
+        except ValueError:
+            role_enum = UserRole.employee
+            
+        import uuid
+        from sqlalchemy.orm import make_transient
+
+        mock_user = User(
+            id=uuid.UUID("11111111-1111-1111-1111-111111111111") if role_enum == UserRole.manager else uuid.UUID("22222222-2222-2222-2222-222222222222"),
+            employee_id=f"MOCK-{role_enum.value.upper()[:3]}-001",
+            email=f"mock_{role_enum.value}@company.com",
+            full_name=f"Mock {role_enum.value.capitalize()}",
+            password_hash="mock_not_a_real_hash",
+            role=role_enum,
+            department_id=None,
+            manager_id=None,
+            is_active=True,
+            preferred_lang="en"
+        )
+        # Detach from any SA session so it's never accidentally flushed to DB
+        make_transient(mock_user)
+        return mock_user
+
+    # 2. Normal JWT flow
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        
     payload = decode_access_token(credentials.credentials)
     user_id = payload.get("sub")
     if not user_id:

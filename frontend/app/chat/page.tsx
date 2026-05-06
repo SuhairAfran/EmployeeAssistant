@@ -56,9 +56,10 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error occurred.";
       setMessages((prev) => [
         ...prev,
-        { id: "error", role: "assistant", content: "⚠️ Sorry, I encountered an error connecting to the secure servers." },
+        { id: "error-" + Date.now(), role: "assistant", content: `⚠️ ${errorMsg}` },
       ]);
     } finally {
       setIsLoading(false);

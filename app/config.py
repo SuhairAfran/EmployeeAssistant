@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AnyHttpUrl, PostgresDsn, field_validator
+from pydantic import PostgresDsn, field_validator
 
 
 class Settings(BaseSettings):
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"             # development | staging | production
     DEBUG: bool = False
     SECRET_KEY: str                          # used for JWT signing
-    ALLOWED_ORIGINS: list[AnyHttpUrl] = []
+    ALLOWED_ORIGINS: list[str] = []
 
     # ── Database ─────────────────────────────────────────────
     DATABASE_URL: PostgresDsn               # postgresql+asyncpg://user:pass@host/db
@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     # ── LLM Providers ────────────────────────────────────────
     OPENAI_API_KEY: str
     ANTHROPIC_API_KEY: str = ""
+    OPENAI_BASE_URL: str | None = None
+    OPENAI_VERIFY_SSL: bool = True
 
     # Dynamic routing: which model for which task
     LLM_INTENT: str = "gpt-4o-mini"         # fast, cheap intent classification

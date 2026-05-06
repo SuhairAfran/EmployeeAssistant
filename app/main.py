@@ -26,21 +26,30 @@ logger = structlog.get_logger("app.lifecycle")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handles startup and shutdown events for the FastAPI application."""
-    # Startup: Load RBAC permissions and initialize Redis
+    # Startup: Load RBAC permissions (fail-open for local dev)
     try:
         async with AsyncSessionLocal() as db:
             await load_role_permissions(db)
-        await setup_redis()
-        
-        logger.info("startup_complete", rbac="loaded", redis="connected", app=settings.APP_NAME, env=settings.APP_ENV)
+        logger.info("rbac_loaded")
     except Exception as e:
-        logger.error("startup_failed", error=str(e))
-        raise e
+        logger.warning("rbac_load_skipped", error=str(e), hint="RBAC permissions not loaded — admin role bypasses all checks")
+
+    # Redis: optional for local dev (rate limiter will fail-open)
+    try:
+        await setup_redis()
+        logger.info("redis_connected")
+    except Exception as e:
+        logger.warning("redis_skipped", error=str(e), hint="Rate limiting disabled — Redis not available")
+
+    logger.info("startup_complete", app=settings.APP_NAME, env=settings.APP_ENV)
         
     yield  # The app is running
     
     # Shutdown
-    await close_redis()
+    try:
+        await close_redis()
+    except Exception:
+        pass
     logger.info("shutdown_initiated", app=settings.APP_NAME)
 
 
@@ -58,9 +67,21 @@ app = FastAPI(
 # ── Middlewares ───────────────────────────────────────────────────────────────
 
 # CORS Middleware for frontend communication
+# Normalize origins: handle both AnyHttpUrl objects and plain strings
+_origins = []
+for o in settings.ALLOWED_ORIGINS:
+    origin_str = str(o).rstrip("/")
+    _origins.append(origin_str)
+
+# Always allow localhost:3000 in development
+if settings.DEBUG:
+    for dev_origin in ["http://localhost:3000", "http://127.0.0.1:3000"]:
+        if dev_origin not in _origins:
+            _origins.append(dev_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(o) for o in settings.ALLOWED_ORIGINS],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -98,8 +119,17 @@ class ApprovalCallback(BaseModel):
 @app.get("/health", tags=["System"])
 async def health():
     """System health check endpoint."""
-    db_ok = await check_db_connection()
-    return {"status": "ok" if db_ok else "degraded", "db": db_ok}
+    try:
+        db_ok = await check_db_connection()
+    except Exception:
+        db_ok = False
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "db": db_ok,
+        "app": settings.APP_NAME,
+        "env": settings.APP_ENV,
+        "debug": settings.DEBUG,
+    }
 
 
 @app.post("/api/v1/chat", response_model=ChatResponse, tags=["Chat"])
@@ -124,6 +154,8 @@ async def chat(
             metadata=final_state.get("metadata", {}),
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         logger.error("chat_endpoint_error", error=str(e), session_id=body.session_id)
         raise HTTPException(status_code=500, detail="An error occurred while processing your request.")
 

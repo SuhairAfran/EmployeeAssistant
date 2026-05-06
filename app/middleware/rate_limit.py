@@ -10,9 +10,11 @@ from app.config import settings
 redis_client: redis.Redis | None = None
 
 async def setup_redis():
-    """Initialize Redis connection pool."""
+    """Initialize Redis connection pool and verify connectivity."""
     global redis_client
     redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+    # Eagerly verify connectivity so startup logs a clear warning if Redis is down
+    await redis_client.ping()
 
 async def close_redis():
     """Close Redis connection."""

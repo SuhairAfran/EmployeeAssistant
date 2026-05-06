@@ -1,9 +1,9 @@
 # ── Core Framework ─────────────────────────────────────────────────────────────
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
 python-dotenv
-pyjwt
+pyjwt[crypto]
 
 # ── Database & Migrations ─────────────────────────────────────────────────────
 sqlalchemy[asyncio]
@@ -16,18 +16,37 @@ greenlet
 openai
 langchain
 langchain-openai
+langchain-anthropic
 langchain-core
 langchain-community
 langchain-text-splitters
 langgraph
+langsmith
 fastmcp
+tiktoken
+
+# ── Vector DB & RAG ───────────────────────────────────────────────────────────
+langchain-chroma
+chromadb
+
+# ── Cache & Session (Rate Limiting) ───────────────────────────────────────────
+redis
+hiredis
+
+# ── Auth & Security ───────────────────────────────────────────────────────────
+passlib[bcrypt]
+
+# ── Logging & Observability ───────────────────────────────────────────────────
+structlog
+python-json-logger
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 pydantic
 pydantic-settings
 httpx
+aiofiles
 
 # ── Document Processing (for ingestion) ───────────────────────────────────────
-unstructured[local-inference]
+unstructured[pdf,docx]
 pypdf
 python-docx

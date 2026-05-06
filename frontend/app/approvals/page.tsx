@@ -41,7 +41,8 @@ export default function ApprovalsPage() {
       setSessionId("");
       setNote("");
     } catch (error) {
-      setStatus({ type: "error", msg: "Failed to resume workflow. Ensure the Session ID is correct and currently paused." });
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      setStatus({ type: "error", msg: `Failed: ${errorMsg}` });
     } finally {
       setIsLoading(false);
     }

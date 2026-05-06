@@ -69,10 +69,22 @@ from app.models import UserRole
 
 def get_llm(model_key: str, temperature: float = settings.LLM_TEMPERATURE) -> ChatOpenAI:
     model_name = getattr(settings, f"LLM_{model_key.upper()}", settings.LLM_HR)
+    
+    # Optional kwargs for custom LLM proxy / disabling SSL verification
+    kwargs = {}
+    if not settings.OPENAI_VERIFY_SSL:
+        import httpx
+        kwargs["http_client"] = httpx.Client(verify=False)
+        kwargs["http_async_client"] = httpx.AsyncClient(verify=False)
+    
+    if settings.OPENAI_BASE_URL:
+        kwargs["base_url"] = settings.OPENAI_BASE_URL
+
     return ChatOpenAI(
         model=model_name,
         temperature=temperature,
         api_key=settings.OPENAI_API_KEY,
+        **kwargs
     )
 
 
