@@ -4,12 +4,25 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 from pydantic import BaseModel, Field
 
+from app.config import settings
+
 CHROMA_PERSIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "database", "chroma_db"))
+
+# Optional kwargs for disabling SSL verification
+kwargs = {}
+verify_ssl = getattr(settings, "OPENAI_VERIFY_SSL", True)
+if not verify_ssl:
+    import httpx
+    kwargs["http_client"] = httpx.Client(verify=False)
+    kwargs["http_async_client"] = httpx.AsyncClient(verify=False)
 
 # Initialize connection to the Vector DB
 vectorstore = Chroma(
     persist_directory=CHROMA_PERSIST_DIR,
-    embedding_function=OpenAIEmbeddings()
+    embedding_function=OpenAIEmbeddings(
+        api_key=settings.OPENAI_API_KEY,
+        **kwargs
+    )
 )
 retriever = vectorstore.as_retriever(
     search_type="mmr", # Maximal Marginal Relevance for diversity

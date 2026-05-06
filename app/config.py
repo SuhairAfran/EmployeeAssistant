@@ -38,12 +38,21 @@ class Settings(BaseSettings):
     OPENAI_VERIFY_SSL: bool = True
 
     # Dynamic routing: which model for which task
-    # Prefix determines the provider: grok-* → xAI, gemini-* → Google, gpt-* → OpenAI
-    LLM_INTENT: str = "grok-3-mini-fast"    # fast, cheap intent classification
-    LLM_HR: str = "gemini-2.5-flash"        # balanced for HR conversations
-    LLM_IT: str = "grok-3-mini-fast"        # fast for IT support
-    LLM_FINANCE: str = "gemini-2.5-flash"   # strong reasoning for calculations
-    LLM_EVALUATOR: str = "grok-3-mini-fast" # GEPA self-evaluation node
+    
+    # --- Gemini Models (Commented out) ---
+    # LLM_INTENT: str = "gemini-2.5-flash"    # fast, cheap intent classification
+    # LLM_HR: str = "gemini-2.5-pro"          # balanced for HR conversations
+    # LLM_IT: str = "gemini-2.5-flash"        # fast for IT support
+    # LLM_FINANCE: str = "gemini-2.5-pro"     # strong reasoning for calculations
+    # LLM_EVALUATOR: str = "gemini-2.5-flash" # GEPA self-evaluation node
+    
+    # --- OpenAI Models (Active) ---
+    LLM_INTENT: str = "gpt-4o-mini"
+    LLM_HR: str = "gpt-4o"
+    LLM_IT: str = "gpt-4o-mini"
+    LLM_FINANCE: str = "gpt-4o"
+    LLM_EVALUATOR: str = "gpt-4o-mini"
+    
     LLM_TEMPERATURE: float = 0.1            # low temp for enterprise accuracy
 
     # ── LangSmith (tracing) ──────────────────────────────────
