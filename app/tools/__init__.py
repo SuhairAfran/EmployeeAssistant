@@ -25,8 +25,9 @@ def get_tools_for_intent(intent: str, user_role: UserRole) -> List[BaseTool]:
         
     # 3. IT Tools
     elif intent.startswith("it"):
-        # tools.append(create_it_ticket)
-        # tools.append(check_ticket_status)
+        tools.append(create_it_ticket)
+        tools.append(check_ticket_status)
+        tools.append(request_it_asset)
         pass
         
     # 4. Finance Tools
