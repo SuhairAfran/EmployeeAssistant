@@ -1,6 +1,7 @@
+import os
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AnyHttpUrl, PostgresDsn, field_validator
+from pydantic import PostgresDsn, field_validator
 
 
 class Settings(BaseSettings):
@@ -16,7 +17,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"             # development | staging | production
     DEBUG: bool = False
     SECRET_KEY: str                          # used for JWT signing
-    ALLOWED_ORIGINS: list[AnyHttpUrl] = []
+    ALLOWED_ORIGINS: list[str] = []
 
     # ── Database ─────────────────────────────────────────────
     DATABASE_URL: PostgresDsn               # postgresql+asyncpg://user:pass@host/db
@@ -25,21 +26,24 @@ class Settings(BaseSettings):
     DB_ECHO: bool = False                   # set True to log all SQL
 
     # ── Redis (short-term memory / rate limiting) ─────────────
-    # NOTE: Redis is not in use currently. Uncomment when adding
-    # rate limiting or session caching.
-    # REDIS_URL: str = "redis://localhost:6379/0"
-    # SESSION_TTL_SECONDS: int = 3600         # 1 hour idle timeout
+    REDIS_URL: str = "redis://localhost:6379/0"
+    SESSION_TTL_SECONDS: int = 3600         # 1 hour idle timeout
 
     # ── LLM Providers ────────────────────────────────────────
-    OPENAI_API_KEY: str
+    OPENAI_API_KEY: str = ""                 # optional — only if using OpenAI models
     ANTHROPIC_API_KEY: str = ""
+    XAI_API_KEY: str = ""                    # Grok (xAI)
+    GOOGLE_API_KEY: str = ""                 # Gemini
+    OPENAI_BASE_URL: str | None = None
+    OPENAI_VERIFY_SSL: bool = True
 
     # Dynamic routing: which model for which task
-    LLM_INTENT: str = "gpt-4o-mini"         # fast, cheap intent classification
-    LLM_HR: str = "gpt-4o"                  # balanced for HR conversations
-    LLM_IT: str = "gpt-4o-mini"             # fast for IT support
-    LLM_FINANCE: str = "gpt-4o"             # strong reasoning for calculations
-    LLM_EVALUATOR: str = "gpt-4o-mini"      # GEPA self-evaluation node
+    # Prefix determines the provider: grok-* → xAI, gemini-* → Google, gpt-* → OpenAI
+    LLM_INTENT: str = "grok-3-mini-fast"    # fast, cheap intent classification
+    LLM_HR: str = "gemini-2.5-flash"        # balanced for HR conversations
+    LLM_IT: str = "grok-3-mini-fast"        # fast for IT support
+    LLM_FINANCE: str = "gemini-2.5-flash"   # strong reasoning for calculations
+    LLM_EVALUATOR: str = "grok-3-mini-fast" # GEPA self-evaluation node
     LLM_TEMPERATURE: float = 0.1            # low temp for enterprise accuracy
 
     # ── LangSmith (tracing) ──────────────────────────────────
@@ -88,3 +92,9 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+# Inject LangSmith settings directly into OS environment for LangChain under-the-hood tracking
+if settings.LANGCHAIN_TRACING_V2 and settings.LANGCHAIN_API_KEY:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
+    os.environ["LANGCHAIN_PROJECT"] = settings.LANGSMITH_PROJECT
