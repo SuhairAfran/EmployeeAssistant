@@ -80,11 +80,13 @@ class AgentState(TypedDict, total=False):
     user_role:     UserRole
     department_id: str | None
     manager_id:    str | None
+    gender:        str
+    is_married:    bool
     preferred_lang: str
 
     # ── Conversation ────────────────────────────────────────────
     session_id:    str
-    messages:      list[BaseMessage]   # full LangChain message history
+    messages:      Annotated[list[BaseMessage], add_messages]  # full LangChain message history
     raw_query:     str                 # original user text (unchanged)
 
     # ── Routing ─────────────────────────────────────────────────
@@ -144,6 +146,8 @@ def initial_state(user_ctx: dict, query: str, session_id: str | None = None) -> 
         user_role=user_ctx["user_role"],
         department_id=user_ctx.get("department_id"),
         manager_id=user_ctx.get("manager_id"),
+        gender=user_ctx.get("gender", "unknown"),
+        is_married=user_ctx.get("is_married", False),
         preferred_lang=user_ctx.get("preferred_lang", "en"),
         session_id=session_id or str(uuid.uuid4()),
         messages=[],

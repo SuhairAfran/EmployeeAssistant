@@ -225,5 +225,7 @@ async def enrich_request(request: Request, user: User = Depends(get_current_user
         "user_role": user.role,
         "department_id": str(user.department_id) if user.department_id else None,
         "manager_id": str(user.manager_id) if user.manager_id else None,
+        "gender": user.gender,
+        "is_married": user.is_married,
         "preferred_lang": user.preferred_lang,
     }

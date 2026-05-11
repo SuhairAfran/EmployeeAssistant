@@ -225,9 +225,12 @@ async def execute_node(state: AgentState) -> AgentState:
     messages = [
         SystemMessage(content=EXECUTE_SYSTEM_STATIC),
         SystemMessage(content=EXECUTE_CONTEXT_TEMPLATE.format(
+            user_id=state["user_id"],
             user_name=state["user_name"],
             user_role=state["user_role"].value,
             department_id=state.get("department_id", "N/A"),
+            gender=state.get("gender", "unknown"),
+            marital_status="Married" if state.get("is_married") else "Single",
             role_guidance=_get_role_guidance(state["user_role"]),
             **_build_date_context(),
         )),
@@ -303,12 +306,11 @@ async def execute_node(state: AgentState) -> AgentState:
                         "response": str(e),
                         "response_type": "error",
                         "intent": infer_intent_from_tool_calls(tool_calls),
-                        "messages": _sanitize_history([
-                            *state.get("messages", []),
+                        "messages": [
                             HumanMessage(content=state["raw_query"]),
                             result,
                             *tool_messages,
-                        ]),
+                        ],
                     }
                 except Exception as e:  # noqa: BLE001
                     tool_messages.append(ToolMessage(
@@ -339,14 +341,14 @@ async def execute_node(state: AgentState) -> AgentState:
     # Infer intent from which tools were called
     inferred_intent = infer_intent_from_tool_calls(tool_calls)
 
+    # Only return the NEW messages this turn. LangGraph's add_messages reducer
+    # will automatically append them to the existing persisted history.
     new_messages = [
-        *state.get("messages", []),
         HumanMessage(content=state["raw_query"]),
         result,
         *tool_messages,
         *([final_message] if tool_messages else []),
     ]
-    new_messages = _sanitize_history(new_messages)
 
     state_update = {
         "messages": new_messages,
@@ -455,10 +457,13 @@ async def save_memory_node(state: AgentState) -> AgentState:
 # ── Node 5: Final respond ────────────────────────────────────────────────────
 
 async def respond_node(state: AgentState) -> AgentState:
-    if state.get("response"):
+    # If the scope gate handled this (e.g., a greeting), execute_node was
+    # bypassed. We must manually append the human query and canned response
+    # to the chat history so the LLM remembers it next turn.
+    if state.get("intent") == "general.greeting" and state.get("response"):
         return {
             "messages": [
-                *state.get("messages", []),
+                HumanMessage(content=state["raw_query"]),
                 AIMessage(content=state["response"]),
             ]
         }
@@ -606,3 +611,29 @@ async def run_workflow_stream(
             "metadata": final_state.get("metadata", {}),
         },
     )
+
+async def get_chat_history(session_id: str) -> list[dict]:
+    """Retrieve the conversation history for a given session."""
+    config = {"configurable": {"thread_id": session_id}}
+    try:
+        state = await workflow.aget_state(config)
+        if not state or not hasattr(state, "values") or not state.values:
+            return []
+        
+        messages = state.values.get("messages", [])
+        history = []
+        for msg in messages:
+            if msg.type in ("human", "ai"):
+                # Skip tool call intermediate messages
+                if msg.type == "ai" and not msg.content:
+                    continue
+                history.append({
+                    "id": msg.id or str(uuid.uuid4()),
+                    "role": "user" if msg.type == "human" else "assistant",
+                    "content": str(msg.content)
+                })
+        return history
+    except Exception as e:
+        import structlog
+        structlog.get_logger("app.graph").error("get_history_error", error=str(e))
+        return []

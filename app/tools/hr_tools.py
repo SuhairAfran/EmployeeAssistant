@@ -157,13 +157,26 @@ async def apply_for_leave(user_id: str, start_date: date, end_date: date, leave_
       2. start_date (YYYY-MM-DD)
       3. end_date (YYYY-MM-DD) — same as start_date for a single day
       4. reason — a brief user-provided explanation; do NOT invent one
-    If ANY required detail is missing, ask a concise follow-up for ONLY
-    the missing detail instead of calling this tool.
+    
+    CRITICAL RULES BEFORE ASKING FOR DATES:
+    - Check the user's Gender and Marital Status from your context.
+    - Maternity/Miscarriage leave: ONLY for females. Reject instantly for males.
+    - Paternity leave: ONLY for married males. Reject instantly if female or single.
+    - Do NOT ask for dates if the user is ineligible for the requested leave type.
+    - Employees cannot apply for backdated leaves (start date in the past). Reject if they try.
+
+    If ANY required detail is missing (and they are eligible), ask a concise
+    follow-up for ONLY the missing detail instead of calling this tool.
 
     DO NOT call this tool if the user is only asking about their balance
     or history. DO NOT call this to cancel a request — use cancel_leave.
     """
     try:
+        from datetime import datetime
+        today = datetime.now().date()
+        if start_date < today:
+            return {"error": "Backdated leave applications are not allowed. The start date must be today or in the future."}
+
         if end_date < start_date:
             return {"error": "The end date cannot be before the start date."}
 
@@ -303,15 +316,16 @@ async def apply_for_leave(user_id: str, start_date: date, end_date: date, leave_
                 status=LeaveStatus.pending
             )
             db.add(new_leave)
+            
+            # Increment pending_days in leave balance (while balance is still attached)
+            if lt not in ['unpaid', 'compensatory']:
+                balance.pending_days += adjusted_business_days
+                
+            # Commit once at the end
             await db.commit()
             await db.refresh(new_leave)
             
             generated_leave_id = str(new_leave.id)
-            
-            # Increment pending_days in leave balance
-            if lt not in ['unpaid', 'compensatory']:
-                balance.pending_days += adjusted_business_days
-                await db.commit()
 
         return {
             "status": "success",
@@ -415,11 +429,11 @@ async def view_leave_history(user_id: str) -> str:
             if not leaves:
                 return "You have no leave requests in the system."
             
-            response = "| Leave Type | Start Date | End Date | Business Days | Status | Applied On |\n"
-            response += "|-----------|------------|----------|---------------|--------|------------|\n"
+            response = "| Leave ID | Leave Type | Start Date | End Date | Business Days | Status | Applied On |\n"
+            response += "|----------|-----------|------------|----------|---------------|--------|------------|\n"
             
             for leave in leaves:
-                response += f"| {leave.leave_type.value.capitalize()} | {leave.start_date} | {leave.end_date} | {leave.business_days} | {leave.status.value.capitalize()} | {leave.applied_at.strftime('%Y-%m-%d')} |\n"
+                response += f"| {leave.id} | {leave.leave_type.value.capitalize()} | {leave.start_date} | {leave.end_date} | {leave.business_days} | {leave.status.value.capitalize()} | {leave.applied_at.strftime('%Y-%m-%d')} |\n"
             
             return response
     except Exception as e:

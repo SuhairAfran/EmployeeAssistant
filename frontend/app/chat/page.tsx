@@ -29,9 +29,54 @@ export default function ChatPage() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Load session and history on mount
+  useEffect(() => {
+    const savedSession = localStorage.getItem(`aura_session_${user?.id}`);
+    if (savedSession) {
+      setSessionId(savedSession);
+      api.chatHistory(savedSession, token).then((res) => {
+        if (res.messages && res.messages.length > 0) {
+          const loadedMessages = res.messages.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          }));
+          // Keep welcome message, append history
+          setMessages([
+            {
+              id: "welcome",
+              role: "assistant",
+              content: "Hello! I am Aura, your enterprise copilot. I can help you with HR (leave, policies, team status) and IT (tickets, asset requests, troubleshooting, policy lookups). How can I assist you today?",
+            },
+            ...loadedMessages,
+          ]);
+        }
+      }).catch(console.error);
+    }
+  }, [user, token]);
+
+  // Save session when it changes
+  useEffect(() => {
+    if (sessionId && user?.id) {
+      localStorage.setItem(`aura_session_${user.id}`, sessionId);
+    }
+  }, [sessionId, user]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
+
+  const handleNewChat = () => {
+    if (user?.id) localStorage.removeItem(`aura_session_${user.id}`);
+    setSessionId(null);
+    setMessages([
+      {
+        id: "welcome",
+        role: "assistant",
+        content: "Hello! I am Aura, your enterprise copilot. I can help you with HR (leave, policies, team status) and IT (tickets, asset requests, troubleshooting, policy lookups). How can I assist you today?",
+      },
+    ]);
+  };
 
   const handleSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -114,12 +159,20 @@ export default function ChatPage() {
             Aura Chat <Sparkles className="h-4 w-4 text-indigo-400" />
           </h1>
         </div>
-        {sessionId && (
-          <div className="flex items-center gap-2 bg-zinc-800/50 px-3 py-1.5 rounded-full border border-zinc-700/50">
-            <Hash className="h-3 w-3 text-zinc-500" />
-            <span className="text-xs text-zinc-400 font-mono font-medium">{sessionId.slice(0, 8)}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {sessionId && (
+            <div className="flex items-center gap-2 bg-zinc-800/50 px-3 py-1.5 rounded-full border border-zinc-700/50">
+              <Hash className="h-3 w-3 text-zinc-500" />
+              <span className="text-xs text-zinc-400 font-mono font-medium">{sessionId.slice(0, 8)}</span>
+            </div>
+          )}
+          <button 
+            onClick={handleNewChat}
+            className="text-xs font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-full transition-colors border border-zinc-700"
+          >
+            New Chat
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
