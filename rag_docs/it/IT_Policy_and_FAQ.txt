@@ -1,0 +1,407 @@
+NOVIGO SOLUTIONS — IT POLICY AND OPERATIONS HANDBOOK
+Version 2.4 | Effective Date: 1 January 2026
+Owner: IT Department | Classification: Internal
+
+
+1. IT Support Process
+=====================
+
+The IT Service Desk is the single entry point for all hardware, software,
+network, and access issues. Employees must NOT contact IT engineers
+directly via Slack, WhatsApp, or personal phone. All requests must be
+raised through a ticket so they can be tracked, prioritised, and audited.
+
+How to raise a ticket
+---------------------
+- Use the AI Copilot ("I have a problem with X") and it will create the
+  ticket on your behalf with the correct category and priority.
+- Alternatively, email itsupport@novigosolutions.com with the subject line
+  "[<category>] <one-line problem>" — a ticket is created automatically.
+- For severe outages affecting more than ten users, also page the on-call
+  IT engineer at +91-80-IT-ON-CALL.
+
+Service Level Agreements
+------------------------
+Response and resolution times are tracked from the moment the ticket
+status moves to "open":
+
+- Critical: response within 30 minutes, resolution target 2 hours.
+  Examples: production system outage, mass email failure, VPN down for
+  the entire office, ransomware suspicion.
+- High: response within 1 hour, resolution target 4 hours.
+  Examples: an individual cannot log in, business-critical software
+  crash, hardware failure for a senior leader.
+- Medium: response within 4 hours, resolution target 1 business day.
+  Examples: laptop slowness, Outlook sync issue, peripheral not
+  detected, software install request for an approved tool.
+- Low: response within 1 business day, resolution target 3 business
+  days. Examples: cosmetic issues, training questions, low-impact
+  configuration changes.
+
+Out-of-hours support
+--------------------
+The Service Desk operates 09:00–19:00 IST on business days. For
+critical issues outside these hours, page the on-call engineer.
+Medium and low priority tickets raised after hours will be picked up the
+next business day.
+
+
+2. Asset Request Policy
+========================
+
+Eligibility
+-----------
+Every full-time employee is entitled to one company laptop, one
+docking station, and up to two external monitors as part of standard
+provisioning. Anything beyond the standard kit must be requested
+through an asset request and is subject to manager approval.
+
+Standard hardware refresh cycle
+-------------------------------
+- Laptops: refreshed every 3 years from the date of joining (or device
+  assignment, whichever is later).
+- Monitors and peripherals: refreshed only on failure or after 5 years.
+- Headsets: refreshed every 2 years for client-facing roles, otherwise
+  on failure.
+
+How to request an asset
+-----------------------
+Submit a request via the AI Copilot ("I need a second monitor for my
+home office"). The Copilot will collect the asset_type and a written
+business justification, then route the request to your reporting
+manager for approval. Once approved, IT will assign an available unit
+from inventory and notify you for collection or shipment.
+
+Approval flow
+-------------
+1. Employee submits asset_request with justification.
+2. Reporting manager reviews and approves or rejects.
+3. If approved, IT verifies inventory availability and assigns the unit.
+4. If no inventory is available, IT raises a procurement request which
+   may take 2–4 weeks for delivery.
+
+Bring-Your-Own-Device (BYOD)
+----------------------------
+Personal devices are not permitted to access the corporate network or
+business data, with two exceptions: (a) accessing webmail through
+Outlook on the Web from a browser, and (b) using Microsoft Authenticator
+on a personal mobile phone for MFA. Both require enrolment in Intune.
+
+
+3. Software Installation Policy
+================================
+
+Approved software list
+----------------------
+The following software is pre-approved and may be installed on demand
+through the Software Center application on every company laptop:
+- Microsoft 365 suite (Word, Excel, PowerPoint, Outlook, Teams, OneDrive)
+- Visual Studio Code, Visual Studio Community, JetBrains tools
+- Git, Node.js, Python (3.11 and 3.12), Docker Desktop
+- Slack, Zoom, Webex
+- Power BI Desktop, Power Automate Desktop
+- Adobe Acrobat Reader (the full Creative Cloud suite is licensed only
+  for the Design team)
+- Browsers: Chrome, Firefox, Edge
+
+Requesting unlisted software
+----------------------------
+For any software not in the approved list, raise a ticket with category
+"software_install". The request must include: software name and version,
+publisher, business justification, and license type (free, trial,
+purchased). The IT Security team will review for licensing, vulnerability,
+and data-exfiltration risk; review takes up to 3 business days.
+
+Prohibited software
+-------------------
+The following are explicitly prohibited and will be removed during
+quarterly compliance scans:
+- Personal cloud storage clients (Dropbox personal, Google Drive personal)
+- Torrent / P2P clients (uTorrent, Transmission, qBittorrent)
+- Remote access tools not sanctioned by IT (TeamViewer, AnyDesk personal)
+- Cracked, pirated, or keygen-patched software of any kind
+- Cryptocurrency miners, wallet clients (unless explicitly approved for
+  blockchain projects)
+- Unsanctioned AI assistant browser extensions that exfiltrate page
+  content; only Microsoft Copilot and the internal AI Copilot are
+  permitted.
+
+Admin rights
+------------
+Standard users do NOT have local administrator rights. Temporary admin
+elevation (8 hours) can be requested via the IT ticket system with
+justification. Permanent admin rights are granted only to IT, DevOps,
+and specific engineering roles by exception.
+
+
+4. VPN and Remote Access
+=========================
+
+VPN client
+----------
+The standard VPN client is Cisco AnyConnect Secure Mobility Client. It
+is preinstalled on all company laptops. VPN is required to access:
+- Internal Jira, Confluence, GitLab
+- Database admin tools and production systems
+- Internal file shares
+- The internal AI Copilot when working from outside corporate Wi-Fi
+
+Setup steps
+-----------
+1. Open Cisco AnyConnect from the Start Menu.
+2. Connect to: vpn.novigosolutions.com
+3. Authenticate with your corporate username and password.
+4. Approve the Microsoft Authenticator MFA push when prompted.
+5. After connection, the icon turns green and a tray notification
+   confirms the tunnel is up.
+
+Work-from-home requirements
+---------------------------
+Employees working remotely must:
+- Use only company-provisioned hardware connected through VPN.
+- Ensure home Wi-Fi is WPA2 or WPA3 secured (NOT open networks).
+- Lock the screen when stepping away (Win+L on Windows).
+- Never connect to the corporate network from public Wi-Fi (cafés,
+  airports, hotels) without VPN.
+
+Always-on VPN
+-------------
+Senior engineers and finance team members may request "always-on" VPN
+profiles, which auto-connect on boot using a YubiKey hardware token.
+Submit an asset_request with asset_type=vpn_token and category=access.
+
+
+5. Password and Security Policy
+================================
+
+Password rules
+--------------
+- Minimum 14 characters.
+- Must contain upper-case, lower-case, number, and special character.
+- Must NOT contain your name, employee ID, or the word "novigo".
+- Cannot match any of your last 12 passwords.
+- Rotated every 90 days; the system prompts 14 days before expiry.
+
+Multi-Factor Authentication (MFA)
+---------------------------------
+MFA is mandatory for every corporate account. The default second
+factor is Microsoft Authenticator push notification on a personal or
+company-provisioned mobile phone. SMS fallback is available but
+discouraged. YubiKey is required for users with elevated privileges
+(admins, finance, IT).
+
+Account lockout
+---------------
+Active Directory locks an account after 5 consecutive failed login
+attempts. The lockout auto-clears after 30 minutes. To request an
+immediate unlock, raise a ticket with category=access; verification
+will be done over a video call to confirm identity.
+
+Password resets
+---------------
+Self-service password reset is available at:
+https://passwords.novigosolutions.com from any corporate-managed device.
+You will need to verify with MFA. If you are locked out of MFA itself,
+contact the IT helpdesk in person or via your manager.
+
+Sharing credentials
+-------------------
+Sharing your password with anyone — including IT engineers, your
+manager, or family members — is a Major Misconduct under the Code of
+Conduct and may result in disciplinary action. IT will never ask for
+your password.
+
+Phishing and incident reporting
+-------------------------------
+Forward suspicious emails to phishing@novigosolutions.com and delete the
+original. Do NOT click any links, even to "unsubscribe". For any
+suspected security incident (lost laptop, leaked credentials, malware
+infection), call the IT Security on-call line immediately at
++91-80-IT-ON-CALL.
+
+
+6. Data and Device Policy
+==========================
+
+Disk encryption
+---------------
+All company laptops are encrypted with BitLocker (Windows) or FileVault
+(macOS). The recovery key is stored in Intune and accessible only to
+IT administrators.
+
+Personal data on company devices
+--------------------------------
+Storing personal photos, music libraries, downloaded movies, or
+non-work files on company devices is discouraged and may be removed
+during routine reimaging. Personal browsing is permitted in moderation
+during breaks but is logged.
+
+Data classification
+-------------------
+- Public: marketing materials, the company website. No restrictions.
+- Internal: this handbook, project plans, internal Confluence pages.
+  Do not share outside the company.
+- Confidential: salary data, HR records, customer PII, source code.
+  Encrypt in transit, no copies on personal devices, no email outside
+  novigosolutions.com without explicit approval.
+- Restricted: financial accounts, security keys, audit reports.
+  Access only on a need-to-know basis with logged approval.
+
+Device wipe on exit
+-------------------
+On termination of employment, IT will remotely wipe and reimage the
+laptop on the last working day. Employees must back up any personal
+files (within policy) before this point. Refusal to return company
+hardware is treated as theft and may be reported to law enforcement.
+
+
+7. Network and Internet
+========================
+
+Wi-Fi networks at office locations
+----------------------------------
+- CORP-WIFI: standard 2.4 GHz / 5 GHz corporate network. Requires
+  domain credentials. Auto-configured on company laptops.
+- CORP-WIFI-5G: 5 GHz only, less congested, recommended during peak
+  hours (10:00–12:00 IST).
+- CORP-IOT: separate VLAN for printers, conference room equipment, and
+  smart-board controllers. Not for general use.
+- GUEST-WIFI: open network for visitors. Internet only, no internal
+  resources, captive portal with daily expiry.
+
+Personal hotspot policy
+-----------------------
+Tethering to a personal mobile hotspot is allowed only when corporate
+Wi-Fi is unavailable AND VPN is connected. Direct internet access via
+hotspot without VPN is a policy violation.
+
+Bandwidth-heavy applications
+----------------------------
+During business hours, please refrain from running large personal
+downloads (game updates, streaming Netflix at 4K, BitTorrent of any
+kind) on the corporate network. Sustained heavy use is logged and may
+be throttled.
+
+
+8. Hardware Troubleshooting Quick Reference
+============================================
+
+Laptop will not boot
+--------------------
+1. Hold the power button for 15 seconds, release, then press power once.
+2. If still nothing, unplug all peripherals and try again.
+3. If the screen is black but fans run, try Win+Ctrl+Shift+B (forces
+   GPU reset on Windows).
+4. If still failing, raise a ticket with category=laptop, priority=high.
+
+Laptop is slow
+--------------
+- Restart at least once a week. Many slowness issues clear with a
+  reboot.
+- Check Task Manager (Ctrl+Shift+Esc) → Performance tab. If CPU or
+  memory is pinned, identify the offending process.
+- Run Dell Command Update or HP Support Assistant to install pending
+  firmware/driver updates.
+- Free up disk space; less than 15% free will degrade performance.
+- If the laptop is more than 3 years old, request a refresh under the
+  hardware refresh cycle.
+
+External monitor not detected
+-----------------------------
+1. Check the cable on both ends. USB-C cables in particular are often
+   the culprit — try a known-good Thunderbolt 3/4 cable.
+2. Win+P to cycle through display modes (PC screen only, Duplicate,
+   Extend, Second screen only).
+3. Update the dock firmware via Dell Command Update.
+4. If on a docking station, unplug the dock from the laptop, wait 10
+   seconds, plug back in.
+
+USB device not working
+----------------------
+- Try a different port. The USB-C ports on most company docks support
+  more devices than the USB-A ports.
+- Check Device Manager for yellow exclamation marks. Right-click any
+  with errors → Uninstall device → reboot. Windows will reinstall.
+- For external storage, ensure it is formatted in exFAT or NTFS, not
+  HFS+ which is read-only on Windows.
+
+
+9. Frequently Asked Questions
+==============================
+
+Q: How do I get a new laptop / replacement laptop?
+A: Use the AI Copilot or raise a ticket. Provide a business
+justification. Your manager must approve. Standard refresh is every
+3 years; earlier refresh requires hardware failure or special
+justification.
+
+Q: Can I use my personal Gmail or WhatsApp on my company laptop?
+A: Personal use of webmail and chat is permitted in moderation, but
+do not use them for any business communication (you must use Outlook
+and Teams for that). Do not enable desktop notifications for personal
+accounts as they may leak content during screen sharing.
+
+Q: I am locked out of my account. What do I do?
+A: Wait 30 minutes for auto-unlock OR raise a ticket with category=
+access for an immediate unlock. The IT engineer will verify your
+identity over video call before unlocking.
+
+Q: My MFA app is not sending me notifications.
+A: Open Microsoft Authenticator → tap your account → "Check for
+notifications". Verify that battery optimisation for Authenticator is
+disabled in your phone settings. If still not working, raise a ticket
+with category=access.
+
+Q: Can I install Notion / Obsidian / <X> on my laptop?
+A: If it is on the approved software list (section 3), yes — install
+through Software Center. Otherwise, raise a software_install ticket
+with the business justification, and IT Security will review within
+3 business days.
+
+Q: How do I request VPN access for a contractor or vendor?
+A: Vendor / contractor access is granted only against a signed NDA
+and a sponsoring manager. Submit a special-access ticket with the NDA
+attached, the sponsoring manager's approval, and the duration of access
+required. Maximum default duration is 90 days, renewable.
+
+Q: My laptop was stolen / lost. What do I do?
+A: Immediately call the IT Security on-call line (+91-80-IT-ON-CALL)
+and email itsec@novigosolutions.com with the time, location, and
+circumstances. IT will remotely wipe the device and revoke all session
+tokens. File a police FIR and send a copy to HR within 48 hours.
+
+Q: Why was my software install request rejected?
+A: Common reasons: the software duplicates an approved tool already
+available, has known security vulnerabilities, requires a paid license
+not budgeted, or processes sensitive data in non-approved jurisdictions.
+The rejection ticket will include the specific reason and may suggest an
+approved alternative.
+
+Q: Can I take my laptop on international travel?
+A: Yes, with two prior steps: (a) submit a travel notification via the
+IT portal at least 5 business days before travel, and (b) for travel
+to specific high-risk countries (list maintained by IT Security),
+collect a sanitised "travel laptop" from the IT Storeroom instead of
+your regular device.
+
+Q: How long are IT tickets retained?
+A: Resolved tickets are retained for 3 years for audit and compliance
+purposes, then archived. You can view the full history of your own
+tickets at any time through the AI Copilot or the self-service portal.
+
+
+10. Contact and Escalation
+===========================
+
+- General IT Service Desk: itsupport@novigosolutions.com
+- IT Security incidents: itsec@novigosolutions.com
+- On-call IT engineer (24x7): +91-80-IT-ON-CALL
+- IT Manager (escalation): vikram.singh@novigosolutions.com
+- Director (final escalation): rajesh.kumar@novigosolutions.com
+
+Document control: This handbook is reviewed annually. Suggestions for
+amendment can be sent to the IT Manager. The latest version is always
+available via the AI Copilot — ask "what is the IT policy on X" and
+the assistant will retrieve the current sections with citations.
+
+End of document.

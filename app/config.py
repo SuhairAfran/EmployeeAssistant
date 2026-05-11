@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     
     # --- OpenAI Models (Active) ---
     LLM_INTENT: str = "gpt-4o-mini"
-    LLM_HR: str = "gpt-4o"
+    LLM_HR: str = "gpt-4o-mini"        # mini is sufficient for RAG synthesis
     LLM_IT: str = "gpt-4o-mini"
     LLM_FINANCE: str = "gpt-4o"
     LLM_EVALUATOR: str = "gpt-4o-mini"
@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 50
 
+    # ── Conversation history (sliding window) ────────────────
+    # Maximum number of prior messages from state["messages"] to send back to
+    # the LLM on each turn. Keeps token usage bounded across multi-query
+    # sessions. A "message" here is one entry (Human/AI/Tool), not a turn.
+    MAX_HISTORY_MESSAGES: int = 24
+
     # ── FastMCP ──────────────────────────────────────────────
     MCP_HOST: str = "0.0.0.0"
     MCP_PORT: int = 8001
@@ -84,7 +90,7 @@ class Settings(BaseSettings):
 
     # ── GEPA (self-evaluation) ───────────────────────────────
     GEPA_EVAL_THRESHOLD: float = 0.80       # retry if quality score < this
-    GEPA_MAX_RETRIES: int = 2
+    GEPA_MAX_RETRIES: int = 1               # bounded retries; loop terminates after this
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

@@ -42,6 +42,7 @@ class LeaveType(str, enum.Enum):
     sick          = "sick"
     earned        = "earned"
     maternity     = "maternity"
+    miscarriage   = "miscarriage"
     paternity     = "paternity"
     bereavement   = "bereavement"
     compensatory  = "compensatory"
@@ -173,6 +174,8 @@ class User(TimestampMixin, Base):
     manager_id:    Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     designation:   Mapped[str | None] = mapped_column(String(150))
     date_of_joining: Mapped[date | None] = mapped_column(Date)
+    gender:        Mapped[str]        = mapped_column(String(10), default="male", nullable=False)
+    is_married:    Mapped[bool]       = mapped_column(Boolean, default=False, nullable=False)
     is_active:     Mapped[bool]       = mapped_column(Boolean, default=True, nullable=False)
     preferred_lang: Mapped[str]       = mapped_column(String(10), default="en", nullable=False)
 
