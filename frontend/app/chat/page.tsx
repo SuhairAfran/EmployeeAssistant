@@ -15,12 +15,12 @@ type Message = {
 };
 
 export default function ChatPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
       role: "assistant",
-      content: "Hello! I am Aura, your Enterprise Intelligence. I can help you check leave balances, submit IT tickets, fetch payslips, and more. How can I assist you today?",
+      content: "Hello! I am Aura, your enterprise copilot. I can help you with HR (leave, policies, team status) and IT (tickets, asset requests, troubleshooting, policy lookups). How can I assist you today?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -38,32 +38,63 @@ export default function ChatPage() {
     if (!input.trim() || !user || isLoading) return;
 
     const userMessage: Message = { id: Date.now().toString(), role: "user", content: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const assistantId = (Date.now() + 1).toString();
+
+    // Optimistically add the user message and an empty assistant message that
+    // we will fill in as tokens stream from the server.
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      { id: assistantId, role: "assistant", content: "" },
+    ]);
     setInput("");
     setIsLoading(true);
 
-    try {
-      const data = await api.chat(userMessage.content, sessionId, user.role);
-      
-      if (!sessionId) setSessionId(data.session_id);
+    const appendToAssistant = (delta: string) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId ? { ...m, content: m.content + delta } : m,
+        ),
+      );
+    };
 
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.response,
-        isApprovalRequired: data.approval_required,
-      };
+    const replaceAssistant = (content: string, isApprovalRequired = false) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId ? { ...m, content, isApprovalRequired } : m,
+        ),
+      );
+    };
 
-      setMessages((prev) => [...prev, aiMessage]);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Unknown error occurred.";
-      setMessages((prev) => [
-        ...prev,
-        { id: "error-" + Date.now(), role: "assistant", content: `⚠️ ${errorMsg}` },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
+    await api.chatStream(userMessage.content, sessionId, token, {
+      onToken: (token) => {
+        appendToAssistant(token);
+      },
+      onDone: (meta) => {
+        if (!sessionId && meta.session_id) setSessionId(meta.session_id);
+        // If the server produced a final response that differs from the
+        // streamed content (e.g. post-processing happened), prefer it.
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== assistantId) return m;
+            const finalContent =
+              meta.response && meta.response.length > m.content.length
+                ? meta.response
+                : m.content;
+            return {
+              ...m,
+              content: finalContent,
+              isApprovalRequired: meta.approval_required,
+            };
+          }),
+        );
+        setIsLoading(false);
+      },
+      onError: (err) => {
+        replaceAssistant(`⚠️ ${err}`);
+        setIsLoading(false);
+      },
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -93,12 +124,14 @@ export default function ChatPage() {
 
       <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
         <div className="mx-auto max-w-4xl pt-4 pb-10">
-          {messages.map((msg) => (
-            <ChatBubble key={msg.id} {...msg} />
-          ))}
+          {messages.map((msg) =>
+            msg.role === "assistant" && msg.content === "" ? null : (
+              <ChatBubble key={msg.id} {...msg} />
+            ),
+          )}
           
           <AnimatePresence>
-            {isLoading && (
+            {isLoading && messages[messages.length - 1]?.role === "assistant" && messages[messages.length - 1]?.content === "" && (
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
