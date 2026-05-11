@@ -228,6 +228,16 @@ async def chat_stream(
         },
     )
 
+@app.get("/api/v1/chat/history/{session_id}", tags=["Chat"])
+async def get_history(
+    session_id: str,
+    user_ctx: dict = Depends(enrich_request),
+):
+    """Retrieve chat history for a session."""
+    from app.graph.workflow import get_chat_history
+    history = await get_chat_history(session_id)
+    return {"messages": history}
+
 
 # Approvals are now handled by the dedicated routes/approvals.py router
 # (mounted above at /api/v1/approvals/*). The legacy /api/v1/approve

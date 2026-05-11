@@ -137,9 +137,12 @@ Formatting rules:
 
 
 EXECUTE_CONTEXT_TEMPLATE = """User context:
+- User ID: {user_id}
 - Name: {user_name}
 - Role: {user_role}
 - Department ID: {department_id}
+- Gender: {gender}
+- Marital Status: {marital_status}
 
 Date context (use these — do NOT recompute):
 - Today: {current_date} ({current_weekday})

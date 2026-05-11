@@ -269,6 +269,19 @@ export const api = {
     }
   },
 
+  /**
+   * Fetch chat history for a session ID
+   */
+  chatHistory: async (
+    sessionId: string,
+    token: string | null
+  ): Promise<{ messages: { role: string; content: string; id: string }[] }> => {
+    return apiFetch<{ messages: { role: string; content: string; id: string }[] }>(`${API_BASE_URL}/chat/history/${sessionId}`, {
+      method: "GET",
+      headers: getHeaders(token),
+    });
+  },
+
   // ── Approvals ──────────────────────────────────────────────────────────────
 
   pendingApprovals: async (token: string | null): Promise<PendingResponse> => {
