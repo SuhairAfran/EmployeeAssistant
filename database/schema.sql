@@ -21,7 +21,7 @@ CREATE TYPE leave_status AS ENUM (
 );
 
 CREATE TYPE leave_type AS ENUM (
-    'casual', 'sick', 'earned', 'maternity', 'paternity',
+    'casual', 'sick', 'earned', 'maternity', 'miscarriage', 'paternity',
     'bereavement', 'compensatory', 'unpaid'
 );
 
@@ -99,6 +99,8 @@ CREATE TABLE users (
     manager_id      UUID REFERENCES users(id) ON DELETE SET NULL,
     designation     VARCHAR(150),
     date_of_joining DATE,
+    gender          VARCHAR(10) NOT NULL DEFAULT 'male', -- 'male' or 'female'
+    is_married      BOOLEAN NOT NULL DEFAULT FALSE,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     preferred_lang  VARCHAR(10) NOT NULL DEFAULT 'en',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -542,7 +544,10 @@ INSERT INTO permissions (code, description, module) VALUES
 ('hr:leave:view_team',      'View team leave requests',         'hr'),
 ('hr:leave:approve',        'Approve/reject leave requests',    'hr'),
 ('hr:leave:view_all',       'View all leave requests',          'hr'),
+('hr:leave:view_department', 'View same-department leave status', 'hr'),
 -- IT
+('it:policy:read',          'Read IT policy documents',         'it'),
+('it:kb:search',            'Search IT knowledge base / FAQs',  'it'),
 ('it:ticket:create',        'Create support ticket',            'it'),
 ('it:ticket:view_own',      'View own tickets',                 'it'),
 ('it:ticket:view_all',      'View all tickets',                 'it'),
@@ -564,7 +569,8 @@ INSERT INTO permissions (code, description, module) VALUES
 -- Role → permissions mapping
 INSERT INTO role_permissions (role, perm_id)
 SELECT 'employee'::user_role, id FROM permissions WHERE code IN (
-    'hr:policy:read', 'hr:leave:apply', 'hr:leave:view_own',
+    'hr:policy:read', 'hr:leave:apply', 'hr:leave:view_own', 'hr:leave:view_department',
+    'it:policy:read', 'it:kb:search',
     'it:ticket:create', 'it:ticket:view_own', 'it:asset:request',
     'finance:payslip:view_own', 'finance:claim:submit',
     'finance:claim:view_own', 'finance:tax:view_own'
@@ -573,7 +579,8 @@ SELECT 'employee'::user_role, id FROM permissions WHERE code IN (
 INSERT INTO role_permissions (role, perm_id)
 SELECT 'manager'::user_role, id FROM permissions WHERE code IN (
     'hr:policy:read', 'hr:leave:apply', 'hr:leave:view_own',
-    'hr:leave:view_team', 'hr:leave:approve',
+    'hr:leave:view_team', 'hr:leave:approve', 'hr:leave:view_department',
+    'it:policy:read', 'it:kb:search',
     'it:ticket:create', 'it:ticket:view_own', 'it:asset:request',
     'finance:payslip:view_own', 'finance:claim:submit', 'finance:claim:view_own',
     'finance:tax:view_own'

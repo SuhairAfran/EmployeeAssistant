@@ -1,98 +1,154 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "@/lib/AuthContext";
 import { usePathname } from "next/navigation";
-import { MessageSquare, CheckSquare, LogOut, Sparkles, User, Settings } from "lucide-react";
-import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import {
+  LayoutDashboard,
+  MessageSquare,
+  CalendarDays,
+  Wrench,
+  Receipt,
+  Inbox,
+  LogOut,
+  Sparkles,
+} from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
+import { api } from "@/lib/api";
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: number;
+  managerOnly?: boolean;
+};
 
 export default function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
   const pathname = usePathname();
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const isManager =
+    user?.role === "manager" || user?.role === "admin" || user?.role === "hr_team";
+
+  // Poll the pending-approvals badge every 30 s for managers.
+  useEffect(() => {
+    if (!isManager || !token) {
+      setPendingCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await api.pendingApprovalsCount(token);
+        if (!cancelled) setPendingCount(res.count);
+      } catch {
+        // ignore — keep last known value
+      }
+    };
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [isManager, token]);
 
   if (!user) return null;
 
-  const isManager = ["manager", "admin"].includes(user.role);
+  const items: NavItem[] = [
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/chat", label: "Chat", icon: MessageSquare },
+    { href: "/leaves", label: "My Leaves", icon: CalendarDays },
+    { href: "/tickets", label: "IT Tickets", icon: Wrench },
+    { href: "/claims", label: "Reimbursements", icon: Receipt },
+    {
+      href: "/approvals",
+      label: "Approvals",
+      icon: Inbox,
+      badge: pendingCount,
+      managerOnly: true,
+    },
+  ];
+
+  const visible = items.filter((it) => !it.managerOnly || isManager);
+
+  const initials = (user.full_name || "User")
+    .split(/\s+/)
+    .map((p) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
   return (
-    <div className="flex h-screen w-72 flex-col border-r border-zinc-800/50 bg-zinc-950/80 backdrop-blur-xl px-4 py-6 z-20">
-      <div className="mb-8 px-3 flex items-center gap-3">
-        <div className="h-10 w-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-          <Sparkles className="text-white h-5 w-5" />
+    <aside className="hidden md:flex w-64 flex-shrink-0 flex-col bg-zinc-900/60 backdrop-blur-xl border-r border-zinc-800/60">
+      {/* Brand */}
+      <div className="px-5 py-5 border-b border-zinc-800/60 flex items-center gap-2.5">
+        <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-900/40">
+          <Sparkles className="h-4 w-4 text-white" />
         </div>
-        <div>
-          <h1 className="text-lg font-bold tracking-tight bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-transparent">
-            Aura
-          </h1>
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Workspace</p>
+        <div className="flex flex-col leading-tight">
+          <span className="text-sm font-semibold text-zinc-100">Aura</span>
+          <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-medium">
+            Enterprise Copilot
+          </span>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1.5 px-1">
-        <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3 px-3">Menu</div>
-        
-        <Link href="/chat">
-          <div className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ${
-            pathname === "/chat" 
-              ? "bg-indigo-500/10 text-indigo-300 font-medium" 
-              : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
-          }`}>
-            {pathname === "/chat" && (
-              <motion.div layoutId="sidebar-active" className="absolute left-0 w-1 h-6 bg-indigo-500 rounded-r-full" />
-            )}
-            <MessageSquare className={`h-5 w-5 ${pathname === "/chat" ? "text-indigo-400" : "text-zinc-500 group-hover:text-zinc-300"}`} />
-            Copilot Chat
-          </div>
-        </Link>
-
-        {isManager && (
-          <Link href="/approvals">
-            <div className={`group relative flex items-center justify-between rounded-xl px-3 py-2.5 transition-all duration-200 ${
-              pathname === "/approvals" 
-                ? "bg-emerald-500/10 text-emerald-300 font-medium" 
-                : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
-            }`}>
-              {pathname === "/approvals" && (
-                <motion.div layoutId="sidebar-active" className="absolute left-0 w-1 h-6 bg-emerald-500 rounded-r-full" />
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
+        {visible.map((item) => {
+          const Icon = item.icon;
+          const active =
+            pathname === item.href || pathname.startsWith(item.href + "/");
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                active
+                  ? "bg-indigo-500/15 text-indigo-300 border border-indigo-500/20"
+                  : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 border border-transparent"
+              }`}
+            >
+              <Icon className="h-4 w-4 flex-shrink-0" />
+              <span className="flex-1 truncate">{item.label}</span>
+              {typeof item.badge === "number" && item.badge > 0 && (
+                <span className="ml-auto inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-[10px] font-bold bg-amber-500 text-zinc-950">
+                  {item.badge > 99 ? "99+" : item.badge}
+                </span>
               )}
-              <div className="flex items-center gap-3">
-                <CheckSquare className={`h-5 w-5 ${pathname === "/approvals" ? "text-emerald-400" : "text-zinc-500 group-hover:text-zinc-300"}`} />
-                Approvals
-              </div>
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-400">
-                2
-              </span>
-            </div>
-          </Link>
-        )}
-        
-        <div className="pt-4 mt-2 border-t border-zinc-800/50">
-          <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3 px-3">Support</div>
-          <button className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200 transition-colors">
-            <Settings className="h-5 w-5 text-zinc-500" />
-            Settings
-          </button>
-        </div>
+            </Link>
+          );
+        })}
       </nav>
 
-      <div className="mt-auto border border-zinc-800/80 bg-zinc-900/50 rounded-2xl p-3">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-9 w-9 bg-zinc-800 rounded-full flex items-center justify-center border border-zinc-700">
-            <User className="h-4 w-4 text-zinc-400" />
+      {/* User card */}
+      <div className="px-3 py-4 border-t border-zinc-800/60">
+        <div className="flex items-center gap-3 px-2 py-2 rounded-xl">
+          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 border border-zinc-600 flex items-center justify-center text-xs font-semibold text-zinc-200">
+            {initials || "U"}
           </div>
-          <div className="flex-1 overflow-hidden">
-            <div className="text-sm font-semibold text-zinc-200 truncate">{user.name}</div>
-            <div className="text-xs text-zinc-500 truncate capitalize">{user.role}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-zinc-100 truncate">
+              {user.full_name || "User"}
+            </div>
+            <div className="text-[11px] text-zinc-500 truncate capitalize">
+              {user.role?.replace("_", " ") || ""}
+            </div>
           </div>
+          <button
+            onClick={logout}
+            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800/80 transition-colors"
+            title="Sign out"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
-        <button
-          onClick={logout}
-          className="w-full flex items-center justify-center gap-2 rounded-xl bg-zinc-800/80 py-2 text-xs font-medium text-zinc-300 hover:bg-red-500/10 hover:text-red-400 transition-colors border border-transparent hover:border-red-500/20"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-          Sign Out
-        </button>
       </div>
-    </div>
+    </aside>
   );
 }

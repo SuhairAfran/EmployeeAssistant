@@ -1,14 +1,22 @@
 from contextlib import asynccontextmanager
 
+import json
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import structlog
 
 # Import your graph and database components
 from app.config import settings
 from app.database import AsyncSessionLocal, check_db_connection
-from app.graph.workflow import run_workflow, workflow
+from app.graph.workflow import (
+    close_workflow,
+    init_workflow,
+    run_workflow,
+    run_workflow_stream,
+)
 from app.middleware import (
     RequestLoggingMiddleware, 
     RateLimitMiddleware, 
@@ -17,6 +25,9 @@ from app.middleware import (
     enrich_request, 
     load_role_permissions
 )
+from app.api.routes.auth import router as auth_router
+from app.api.routes.approvals import router as approvals_router
+from app.api.routes.self_service import router as self_service_router
 
 # Set up structured logging
 logger = structlog.get_logger("app.lifecycle")
@@ -41,11 +52,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("redis_skipped", error=str(e), hint="Rate limiting disabled — Redis not available")
 
+    # LangGraph PostgreSQL checkpointer: makes chat history survive restarts.
+    try:
+        await init_workflow()
+        logger.info("workflow_checkpointer_ready", backend="postgres")
+    except Exception as e:
+        logger.warning(
+            "workflow_checkpointer_fallback",
+            error=str(e),
+            hint="Chat history will not persist — using in-memory checkpointer",
+        )
+
     logger.info("startup_complete", app=settings.APP_NAME, env=settings.APP_ENV)
         
     yield  # The app is running
     
     # Shutdown
+    try:
+        await close_workflow()
+    except Exception:
+        pass
     try:
         await close_redis()
     except Exception:
@@ -93,6 +119,11 @@ app.add_middleware(RateLimitMiddleware)
 # Structured request logging
 app.add_middleware(RequestLoggingMiddleware)
 
+# ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(auth_router)
+app.include_router(approvals_router)
+app.include_router(self_service_router)
+
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -107,12 +138,6 @@ class ChatResponse(BaseModel):
     agent_used: str | None
     approval_required: bool
     metadata: dict
-
-class ApprovalCallback(BaseModel):
-    session_id: str
-    decision: str
-    note: str = ""
-
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -160,27 +185,51 @@ async def chat(
         raise HTTPException(status_code=500, detail="An error occurred while processing your request.")
 
 
-@app.post("/api/v1/approve", tags=["Approvals"])
-async def handle_approval(
-    body: ApprovalCallback,
+@app.post("/api/v1/chat/stream", tags=["Chat"])
+async def chat_stream(
+    body: ChatRequest,
     user_ctx: dict = Depends(enrich_request),
 ):
-    """Resumes a paused LangGraph workflow after a manager makes an approval decision."""
-    from langgraph.types import Command
-    from app.models import UserRole
-    
-    if user_ctx.get("user_role") not in [UserRole.manager, UserRole.admin]:
-        raise HTTPException(status_code=403, detail="Only managers or admins can perform approvals.")
+    """Streaming version of /api/v1/chat — emits Server-Sent Events.
 
-    try:
-        config = {"configurable": {"thread_id": body.session_id}}
-        
-        await workflow.ainvoke(
-            Command(resume={"decision": body.decision, "note": body.note}),
-            config=config,
-        )
-        return {"status": "ok", "decision": body.decision, "session_id": body.session_id}
-        
-    except Exception as e:
-        logger.error("approval_endpoint_error", error=str(e), session_id=body.session_id)
-        raise HTTPException(status_code=500, detail="Failed to resume workflow after approval.")
+    Event format: each event is a JSON object on a single SSE `data:` line:
+      {"type": "token", "content": "..."}    incremental text token
+      {"type": "done",  "session_id": ...,
+                        "intent": ..., "approval_required": ...,
+                        "metadata": {...}}    final event
+      {"type": "error", "message": "..."}    error event
+    """
+
+    async def event_generator():
+        try:
+            async for kind, payload in run_workflow_stream(
+                user_ctx=user_ctx,
+                query=body.message,
+                session_id=body.session_id,
+            ):
+                if kind == "token":
+                    yield f"data: {json.dumps({'type': 'token', 'content': payload})}\n\n"
+                elif kind == "done":
+                    payload_out = {"type": "done", **payload}
+                    yield f"data: {json.dumps(payload_out)}\n\n"
+                elif kind == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'message': payload})}\n\n"
+        except Exception as e:  # noqa: BLE001
+            logger.error("chat_stream_error", error=str(e), session_id=body.session_id)
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Stream failed.'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+        },
+    )
+
+
+# Approvals are now handled by the dedicated routes/approvals.py router
+# (mounted above at /api/v1/approvals/*). The legacy /api/v1/approve
+# endpoint that resumed an interrupted LangGraph state has been removed in
+# favour of straightforward DB mutations.

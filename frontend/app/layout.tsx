@@ -15,8 +15,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "NoviBot - Employee Assistant",
-  description: "Intelligent HR, IT, and Finance Assistant",
+  title: "Aura — Enterprise Copilot",
+  description: "AI copilot for HR and IT self-service.",
 };
 
 export default function RootLayout({

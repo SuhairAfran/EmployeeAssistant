@@ -2,6 +2,7 @@
 import React from "react";
 import { User, Bot, Clock } from "lucide-react";
 import { motion } from "framer-motion";
+import MarkdownMessage from "./MarkdownMessage";
 
 type MessageProps = {
   role: "user" | "assistant";
@@ -33,18 +34,22 @@ export default function ChatBubble({ role, content, isApprovalRequired }: Messag
             : "bg-zinc-800/80 backdrop-blur-sm border border-zinc-700/50 text-zinc-100 rounded-tl-sm shadow-black/20"
         }`}
       >
-        <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
-          {content}
-        </div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap text-[15px] leading-relaxed">
+            {content}
+          </div>
+        ) : (
+          <MarkdownMessage content={content} />
+        )}
         
         {/* Special UI if the graph paused for approval */}
         {isApprovalRequired && !isUser && (
           <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200/90 flex items-start gap-3">
             <Clock className="h-4 w-4 text-amber-400 flex-shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold text-amber-300 block mb-0.5">Approval Required</span>
-              This request has been paused and sent to your manager for approval. 
-              You will be notified once a decision is made.
+              <span className="font-semibold text-amber-300 block mb-0.5">Pending manager approval</span>
+              Your request has been submitted. Your manager will see it in the Approvals tab,
+              and you can track the status from your dashboard.
             </div>
           </div>
         )}
