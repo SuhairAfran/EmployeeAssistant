@@ -8,6 +8,7 @@ from app.tools.it_rag_tools import build_it_policy_tool
 from app.tools.hr_tools import (
     get_leave_balance, apply_for_leave, cancel_leave,
     view_leave_history, view_team_leaves, view_department_on_leave_today,
+    approve_leave,
 )
 from app.tools.it_tools import (
     create_it_ticket, get_ticket_status, request_it_asset,
@@ -26,6 +27,7 @@ TOOL_INTENT_MAP: dict[str, str] = {
     "view_leave_history":             "hr.leave_view_history",
     "view_team_leaves":               "hr.leave_view_team",
     "view_department_on_leave_today": "hr.department_on_leave",
+    "approve_leave":                  "hr.leave_approve",
     "search_hr_policies":             "hr.policy_query",
     "create_it_ticket":               "it.ticket_create",
     "get_ticket_status":              "it.ticket_status",
@@ -66,6 +68,7 @@ def get_tools_for_role(user_role: UserRole) -> List[BaseTool]:
     # HR management tools (managers / admin / HR only)
     if user_role in (UserRole.manager, UserRole.admin, UserRole.hr_team):
         tools.append(view_team_leaves)
+        tools.append(approve_leave)
 
     # ── IT ──────────────────────────────────────────────────────────────
     tools.extend([

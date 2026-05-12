@@ -549,3 +549,168 @@ async def view_department_on_leave_today(user_id: str, target_name: str) -> str:
                 return f"{target.full_name} is not on leave today. They may simply be running late or in a meeting."
     except Exception as e:
         return f"Error checking leave status: {str(e)}"
+
+
+# ==========================================
+# APPROVAL TOOLS (Manager / Admin / HR only)
+# ==========================================
+
+class ApproveLeaveInput(BaseModel):
+    manager_id: str = Field(
+        description="The UUID of the manager/HR/admin taking the approval action. Use the user_id from user context."
+    )
+    leave_id: str = Field(
+        description="The UUID of the leave request to approve or reject. Obtain this from view_team_leaves."
+    )
+    decision: str = Field(
+        description="The decision: must be exactly 'approved' or 'rejected'."
+    )
+    note: str = Field(
+        default="",
+        description="Optional short note explaining the decision (e.g. 'Team coverage confirmed')."
+    )
+    confirmed: bool = Field(
+        description=(
+            "Must be True. The agent MUST ask the manager to confirm before calling this tool. "
+            "Never set this to True without an explicit confirmation from the manager in the chat."
+        )
+    )
+
+
+@tool("approve_leave", args_schema=ApproveLeaveInput)
+async def approve_leave(
+    manager_id: str,
+    leave_id: str,
+    decision: str,
+    note: str = "",
+    confirmed: bool = False,
+) -> Dict[str, Any]:
+    """
+    Approve or reject a direct report's pending leave request via chat.
+
+    AVAILABLE TO: managers, admin, hr_team only.
+
+    TRIGGER PHRASES: "approve [name]'s leave", "reject the leave request",
+    "I want to approve leave ID ...", "decline Alice's sick leave",
+    "approve pending leave", "can I approve this?".
+
+    MANDATORY FLOW — follow this exactly every time:
+      1. Call view_team_leaves to show the manager their pending requests.
+      2. Identify the leave_id the manager wants to act on.
+      3. Summarise: employee name, leave type, dates, business days.
+      4. Ask explicitly: "Do you want to APPROVE or REJECT this leave?
+         Type YES to confirm."
+      5. Only after the manager says YES / confirms, call this tool with
+         confirmed=True.
+      6. NEVER call this tool with confirmed=False — that is a hard error.
+      7. NEVER invent a leave_id. Always show the manager the list first.
+
+    SECURITY: This tool verifies that the leave requester's manager_id
+    matches the acting manager_id. Cross-department approvals are blocked.
+    """
+    if not confirmed:
+        return {
+            "error": (
+                "Approval not confirmed. Please ask the manager to explicitly "
+                "confirm before proceeding."
+            )
+        }
+
+    decision = decision.strip().lower()
+    if decision not in ("approved", "rejected"):
+        return {"error": f"Invalid decision '{decision}'. Must be 'approved' or 'rejected'."}
+
+    try:
+        from datetime import datetime as dt
+        async with AsyncSessionLocal() as db:
+            # Fetch the leave request
+            leave_stmt = select(LeaveRequest).where(LeaveRequest.id == leave_id)
+            leave_result = await db.execute(leave_stmt)
+            leave_request = leave_result.scalar_one_or_none()
+
+            if not leave_request:
+                return {"error": f"Leave request '{leave_id}' not found."}
+
+            if leave_request.status != LeaveStatus.pending:
+                return {
+                    "error": (
+                        f"This leave is already '{leave_request.status.value}' "
+                        "and cannot be actioned again."
+                    )
+                }
+
+            # Security: verify the acting manager actually manages this employee
+            employee_stmt = select(User).where(User.id == leave_request.user_id)
+            employee_result = await db.execute(employee_stmt)
+            employee = employee_result.scalar_one_or_none()
+
+            if not employee:
+                return {"error": "The employee associated with this leave was not found."}
+
+            # Allow admin / hr_team to bypass the manager_id check
+            acting_user_stmt = select(User).where(User.id == manager_id)
+            acting_result = await db.execute(acting_user_stmt)
+            acting_user = acting_result.scalar_one_or_none()
+
+            if not acting_user:
+                return {"error": "Acting user not found."}
+
+            is_privileged = acting_user.role in (UserRole.admin, UserRole.hr_team)
+            is_direct_manager = str(employee.manager_id) == str(manager_id)
+
+            if not is_privileged and not is_direct_manager:
+                return {
+                    "error": (
+                        f"{employee.full_name} is not your direct report. "
+                        "You can only approve leaves for employees who report directly to you."
+                    )
+                }
+
+            # Update leave request status
+            leave_request.status = (
+                LeaveStatus.approved if decision == "approved" else LeaveStatus.rejected
+            )
+            leave_request.reviewed_by = manager_id
+            leave_request.reviewed_at = dt.utcnow()
+            leave_request.reviewer_note = note or None
+
+            # Update leave balance
+            lt = leave_request.leave_type.value
+            if lt not in ("unpaid", "compensatory"):
+                balance_stmt = select(LeaveBalance).where(
+                    and_(
+                        LeaveBalance.user_id == leave_request.user_id,
+                        LeaveBalance.year == leave_request.start_date.year,
+                        LeaveBalance.leave_type == leave_request.leave_type,
+                    )
+                )
+                balance_result = await db.execute(balance_stmt)
+                balance = balance_result.scalar_one_or_none()
+
+                if balance:
+                    # Always clear the pending days regardless of decision
+                    balance.pending_days = max(
+                        0, balance.pending_days - leave_request.business_days
+                    )
+                    if decision == "approved":
+                        # Move days into used
+                        balance.used_days += leave_request.business_days
+
+            await db.commit()
+
+        action_word = "approved" if decision == "approved" else "rejected"
+        return {
+            "status": "success",
+            "message": (
+                f"Leave request for {employee.full_name} ({leave_request.leave_type.value} leave, "
+                f"{leave_request.start_date} – {leave_request.end_date}, "
+                f"{leave_request.business_days} business day(s)) has been **{action_word}**."
+                + (f" Note: {note}" if note else "")
+            ),
+            "leave_id": str(leave_request.id),
+            "decision": decision,
+            "employee": employee.full_name,
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to process approval: {str(e)}"}

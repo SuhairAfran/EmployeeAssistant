@@ -132,8 +132,14 @@ def _build_date_context() -> dict:
 def _get_role_guidance(user_role: UserRole) -> str:
     if user_role == UserRole.employee:
         return "You are a helpful Service Assistant. Guide the user politely through policies and applications."
-    elif user_role == UserRole.manager:
-        return "You are an HR Administrative Copilot. This user is a manager. They can view team leaves and approve requests via the approvals dashboard. When they ask about pending leaves, direct them to the approvals tab."
+    if user_role == UserRole.manager:
+        return (
+            "You are an HR Administrative Copilot. This user is a manager with approval authority. "
+            "They can: (1) view their team's leave requests via `view_team_leaves`, "
+            "(2) approve or reject pending requests directly in this chat via `approve_leave`. "
+            "When they ask about pending leaves, show the list first. "
+            "When they want to approve/reject, always confirm the details and get explicit YES before calling `approve_leave`."
+        )
     elif user_role == UserRole.admin:
         return "You are an HR Administrative Copilot. This user has full authorization. Guide them efficiently through all HR operations."
     elif user_role == UserRole.hr_team:
