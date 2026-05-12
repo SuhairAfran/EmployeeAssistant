@@ -3,11 +3,13 @@ from typing import Any, Dict, Optional
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
+from sqlalchemy.orm import selectinload
 from app.database import AsyncSessionLocal
 from app.models import (
     ITTicket, TicketCategory, TicketPriority, TicketStatus,
     AssetRequest, AssetType, RequestStatus, KnownIssue,
+    UserRole,
 )
 
 # ==========================================
@@ -23,6 +25,7 @@ class CreateTicketInput(BaseModel):
 
 class GetTicketStatusInput(BaseModel):
     user_id: str = Field(description="The UUID of the employee checking the ticket.")
+    user_role: str = Field(description="The role of the user (e.g., 'employee', 'it_team', 'admin').")
     ticket_no: str = Field(description="The specific ticket number (e.g., 'TKT-12345').")
 
 class RequestAssetInput(BaseModel):
@@ -90,9 +93,12 @@ async def create_it_ticket(user_id: str, category: TicketCategory, subject: str,
         return {"error": f"Failed to create IT ticket: {str(e)}"}
 
 @tool("get_ticket_status", args_schema=GetTicketStatusInput)
-async def get_ticket_status(user_id: str, ticket_no: str) -> str:
+async def get_ticket_status(user_id: str, user_role: str, ticket_no: str) -> str:
     """
     Check the current status and resolution notes of a specific IT ticket.
+
+    IT team members and admins can check the status of ANY ticket.
+    Regular employees can only check their own tickets.
 
     TRIGGER PHRASES: "check ticket status", "what happened to my ticket",
     "update on TKT-XXXX", "is my ticket resolved", "ticket progress".
@@ -104,25 +110,45 @@ async def get_ticket_status(user_id: str, ticket_no: str) -> str:
     DO NOT call this to list all tickets — use view_it_tickets instead.
     """
     try:
+        is_it_staff = user_role in ("it_team", "admin")
+
         async with AsyncSessionLocal() as db:
-            stmt = select(ITTicket).where(
-                and_(ITTicket.ticket_no == ticket_no, ITTicket.user_id == user_id)
-            )
+            # IT team / admin can look up any ticket; others only their own
+            if is_it_staff:
+                stmt = (
+                    select(ITTicket)
+                    .options(selectinload(ITTicket.user))
+                    .where(ITTicket.ticket_no == ticket_no)
+                )
+            else:
+                stmt = select(ITTicket).where(
+                    and_(ITTicket.ticket_no == ticket_no, ITTicket.user_id == user_id)
+                )
             result = await db.execute(stmt)
             ticket = result.scalar_one_or_none()
-            
+
             if not ticket:
+                if is_it_staff:
+                    return f"No ticket found with the number {ticket_no}."
                 return f"I couldn't find a ticket with the number {ticket_no} associated with your account."
-            
+
             response = f"**Ticket {ticket.ticket_no} Status Update:**\n"
+            # Show the employee name when viewed by IT staff
+            if is_it_staff and hasattr(ticket, 'user') and ticket.user:
+                response += f"- **Raised by:** {ticket.user.full_name}\n"
+            response += f"- **Category:** {ticket.category.value.replace('_', ' ').capitalize()}\n"
+            response += f"- **Subject:** {ticket.subject}\n"
             response += f"- **Status:** {ticket.status.value.replace('_', ' ').capitalize()}\n"
             response += f"- **Priority:** {ticket.priority.value.capitalize()}\n"
-            
+            response += f"- **Raised on:** {ticket.created_at.strftime('%Y-%m-%d %H:%M')}\n"
+
             if ticket.resolution:
-                response += f"- **Resolution Notes:** {ticket.resolution}\n"
-                
+                response += f"- **Resolution:** {ticket.resolution}\n"
+            if ticket.resolved_at:
+                response += f"- **Resolved on:** {ticket.resolved_at.strftime('%Y-%m-%d %H:%M')}\n"
+
             return response
-            
+
     except Exception as e:
         return f"Error fetching ticket status: {str(e)}"
 
@@ -178,43 +204,80 @@ async def request_it_asset(user_id: str, asset_type: AssetType, justification: s
 
 class ViewITTicketsInput(BaseModel):
     user_id: str = Field(description="The UUID of the employee whose IT tickets to list.")
+    user_role: str = Field(description="The role of the user (e.g., 'employee', 'it_team', 'admin').")
 
 
 @tool("view_it_tickets", args_schema=ViewITTicketsInput)
-async def view_it_tickets(user_id: str) -> str:
+async def view_it_tickets(user_id: str, user_role: str) -> str:
     """
-    List all IT tickets raised by the employee, most recent first.
+    List IT tickets, most recent first.
+
+    - IT team members and admins see ALL tickets across the organization.
+    - Regular employees only see their own tickets.
 
     TRIGGER PHRASES: "show my IT tickets", "list my tickets", "what
     tickets do I have", "my open tickets", "IT ticket history",
-    "my support requests".
+    "my support requests", "show all tickets" (IT team),
+    "list open tickets" (IT team).
 
     DO NOT call this to check a specific ticket's status — use
     get_ticket_status with the ticket number instead.
     """
     try:
+        is_it_staff = user_role in ("it_team", "admin")
+
         async with AsyncSessionLocal() as db:
-            stmt = (
-                select(ITTicket)
-                .where(ITTicket.user_id == user_id)
-                .order_by(ITTicket.created_at.desc())
-                .limit(50)
-            )
+            if is_it_staff:
+                # IT team / admin: see ALL tickets with employee names
+                stmt = (
+                    select(ITTicket)
+                    .options(selectinload(ITTicket.user))
+                    .order_by(ITTicket.created_at.desc())
+                    .limit(50)
+                )
+            else:
+                # Regular employee: own tickets only
+                stmt = (
+                    select(ITTicket)
+                    .where(ITTicket.user_id == user_id)
+                    .order_by(ITTicket.created_at.desc())
+                    .limit(50)
+                )
             result = await db.execute(stmt)
             tickets = result.scalars().all()
 
             if not tickets:
+                if is_it_staff:
+                    return "There are no IT tickets in the system."
                 return "You have not raised any IT tickets yet."
 
-            response = "| Ticket | Category | Subject | Priority | Status | Raised |\n"
-            response += "|--------|----------|---------|----------|--------|--------|\n"
-            for t in tickets:
-                response += (
-                    f"| {t.ticket_no} | {t.category.value.replace('_', ' ').capitalize()} | "
-                    f"{t.subject} | {t.priority.value.capitalize()} | "
-                    f"{t.status.value.replace('_', ' ').capitalize()} | "
-                    f"{t.created_at.strftime('%Y-%m-%d')} |\n"
-                )
+            # Build table — IT staff gets an extra "Raised By" column
+            if is_it_staff:
+                response = "| Ticket | Raised By | Category | Subject | Priority | Status | Resolution | Raised |\n"
+                response += "|--------|-----------|----------|---------|----------|--------|------------|--------|\n"
+                for t in tickets:
+                    name = t.user.full_name if t.user else "Unknown"
+                    resolution = (t.resolution or "—")[:60]
+                    response += (
+                        f"| {t.ticket_no} | {name} | "
+                        f"{t.category.value.replace('_', ' ').capitalize()} | "
+                        f"{t.subject} | {t.priority.value.capitalize()} | "
+                        f"{t.status.value.replace('_', ' ').capitalize()} | "
+                        f"{resolution} | "
+                        f"{t.created_at.strftime('%Y-%m-%d')} |\n"
+                    )
+            else:
+                response = "| Ticket | Category | Subject | Priority | Status | Resolution | Raised |\n"
+                response += "|--------|----------|---------|----------|--------|------------|--------|\n"
+                for t in tickets:
+                    resolution = (t.resolution or "—")[:60]
+                    response += (
+                        f"| {t.ticket_no} | {t.category.value.replace('_', ' ').capitalize()} | "
+                        f"{t.subject} | {t.priority.value.capitalize()} | "
+                        f"{t.status.value.replace('_', ' ').capitalize()} | "
+                        f"{resolution} | "
+                        f"{t.created_at.strftime('%Y-%m-%d')} |\n"
+                    )
             return response
     except Exception as e:
         return f"Error fetching IT tickets: {str(e)}"
@@ -284,3 +347,48 @@ async def search_known_issues(query: str, category: Optional[TicketCategory] = N
             return response.rstrip()
     except Exception as e:
         return f"Error searching known issues: {str(e)}"
+
+
+class ResolveTicketInput(BaseModel):
+    user_id: str = Field(description="The UUID of the IT staff member resolving the ticket.")
+    user_role: str = Field(description="The role of the user (e.g., 'employee', 'it_team', 'admin').")
+    ticket_no: str = Field(description="The ticket number to resolve (e.g., 'TKT-12345').")
+    resolution_notes: str = Field(description="Detailed explanation of how the issue was fixed.")
+
+
+@tool("resolve_it_ticket", args_schema=ResolveTicketInput)
+async def resolve_it_ticket(user_id: str, user_role: str, ticket_no: str, resolution_notes: str) -> str:
+    """
+    Resolve/Close an IT ticket. Only available to IT team members and admins.
+
+    TRIGGER PHRASES: "resolve ticket TKT-XXXX", "close ticket",
+    "I fixed the issue for TKT-XXXX", "mark ticket as resolved".
+
+    BEFORE calling: you MUST have the ticket number and resolution notes.
+    If notes are missing, ask the IT staff for them.
+    """
+    try:
+        if user_role not in ("it_team", "admin"):
+            return "Permission denied: Only IT team members or admins can resolve tickets."
+
+        async with AsyncSessionLocal() as db:
+            stmt = select(ITTicket).where(ITTicket.ticket_no == ticket_no)
+            result = await db.execute(stmt)
+            ticket = result.scalar_one_or_none()
+
+            if not ticket:
+                return f"No ticket found with number {ticket_no}."
+
+            if ticket.status == TicketStatus.resolved:
+                return f"Ticket {ticket_no} is already resolved."
+
+            ticket.status = TicketStatus.resolved
+            ticket.resolution = resolution_notes
+            ticket.resolved_at = func.now()
+            ticket.assigned_to = uuid.UUID(user_id)
+
+            await db.commit()
+            return f"Success: Ticket {ticket_no} has been marked as resolved."
+
+    except Exception as e:
+        return f"Error resolving ticket: {str(e)}"

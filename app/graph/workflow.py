@@ -1,8 +1,8 @@
 """
-LangGraph Workflow — Tool-first dispatch (no intent node)
+LangGraph Workflow — Multi-Agent Dispatcher Architecture
 =========================================================
-The LLM's native tool-calling replaces the dedicated intent classifier.
-Graph: scope_gate → execute_node → (eval_node) → save_memory → respond → END
+Router classifies intent → dispatches to HR or IT specialist agent.
+Graph: scope_gate → router → (hr_agent | it_agent) → (eval_node) → save_memory → respond → END
 """
 from __future__ import annotations
 
@@ -26,6 +26,9 @@ from app.graph.prompts import (
     EVAL_SYSTEM,
     EXECUTE_CONTEXT_TEMPLATE,
     EXECUTE_SYSTEM_STATIC,
+    HR_AGENT_SYSTEM_STATIC,
+    IT_AGENT_SYSTEM_STATIC,
+    ROUTER_SYSTEM,
 )
 from app.middleware import RBACViolation
 from app.models import UserRole
@@ -75,10 +78,10 @@ def _is_greeting(text: str) -> bool:
 
 
 async def scope_gate_node(state: AgentState) -> AgentState:
-    """Fast Python-only gate: handle greetings, set up tool list.
+    """Fast Python-only gate: handle greetings.
 
     No LLM call. Greetings get a canned response and skip to respond.
-    All other queries proceed to execute_node with the full tool set.
+    All other queries proceed to the router for domain classification.
     """
     raw = state["raw_query"]
 
@@ -95,11 +98,51 @@ async def scope_gate_node(state: AgentState) -> AgentState:
             "route_to": "respond",
         }
 
-    return {"route_to": "execute_node"}
+    return {"route_to": "router_node"}
 
 
 def route_after_scope_gate(state: AgentState) -> str:
-    return state.get("route_to", "execute_node")
+    return state.get("route_to", "router_node")
+
+
+# ── Node 2: Router (lightweight LLM classifier) ─────────────────────────────
+
+async def router_node(state: AgentState) -> AgentState:
+    """Classify the user's query into HR, IT, or GENERAL domain.
+
+    Uses a small, fast LLM call with no tools — just a one-word response.
+    Sets route_to so the graph dispatches to the correct specialist.
+    """
+    llm = get_llm("hr", temperature=0.0)
+
+    # Include recent history so the router understands follow-up context
+    history = _truncate_history(
+        state.get("messages", []), max_messages=6
+    )
+
+    messages = [
+        SystemMessage(content=ROUTER_SYSTEM),
+        *history,
+        HumanMessage(content=state["raw_query"]),
+    ]
+
+    result = await llm.ainvoke(messages)
+    domain = result.content.strip().upper().split()[0] if result.content else "GENERAL"
+
+    if domain == "HR":
+        return {"route_to": "hr_agent", "agent_used": "hr_agent"}
+    elif domain == "IT":
+        return {"route_to": "it_agent", "agent_used": "it_agent"}
+    else:
+        # Default ambiguous queries to the HR agent (broader scope)
+        return {"route_to": "hr_agent", "agent_used": "hr_agent"}
+
+
+def route_after_router(state: AgentState) -> str:
+    route = state.get("route_to", "hr_agent")
+    if route == "it_agent":
+        return "it_agent_node"
+    return "hr_agent_node"
 
 
 # ── Helpers: history management ───────────────────────────────────────────────
@@ -132,8 +175,14 @@ def _build_date_context() -> dict:
 def _get_role_guidance(user_role: UserRole) -> str:
     if user_role == UserRole.employee:
         return "You are a helpful Service Assistant. Guide the user politely through policies and applications."
-    elif user_role == UserRole.manager:
-        return "You are an HR Administrative Copilot. This user is a manager. They can view team leaves and approve requests via the approvals dashboard. When they ask about pending leaves, direct them to the approvals tab."
+    if user_role == UserRole.manager:
+        return (
+            "You are an HR Administrative Copilot. This user is a manager with approval authority. "
+            "They can: (1) view their team's leave requests via `view_team_leaves`, "
+            "(2) approve or reject pending requests directly in this chat via `approve_leave`. "
+            "When they ask about pending leaves, show the list first. "
+            "When they want to approve/reject, always confirm the details and get explicit YES before calling `approve_leave`."
+        )
     elif user_role == UserRole.admin:
         return "You are an HR Administrative Copilot. This user has full authorization. Guide them efficiently through all HR operations."
     elif user_role == UserRole.hr_team:
@@ -207,15 +256,27 @@ def _truncate_history(history: list, max_messages: int) -> list:
         break
 
     return _sanitize_history(window)
+# ── Shared specialist execution logic ────────────────────────────────────────
+
+async def _stream_model(model, messages):
+    """Helper to call model.astream and accumulate the result.
+    This ensures on_chat_model_stream events are emitted for the frontend."""
+    full_message = None
+    async for chunk in model.astream(messages):
+        if full_message is None:
+            full_message = chunk
+        else:
+            full_message += chunk
+    return full_message
 
 
-# ── Node 2: Execute (tools + RAG) ────────────────────────────────────────────
+async def _run_specialist(state: AgentState, system_prompt: str, tools: list) -> AgentState:
+    """Shared execution logic used by both HR and IT specialist agents.
 
-async def execute_node(state: AgentState) -> AgentState:
-    from app.tools import get_tools_for_role
-
-    llm = get_llm("hr")  # default model for all queries
-    tools = get_tools_for_role(state["user_role"])
+    Handles: LLM invocation, tool calling, post-tool synthesis,
+    approval/email extraction, and message history management.
+    """
+    llm = get_llm("hr")
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
     history = _truncate_history(
@@ -223,7 +284,7 @@ async def execute_node(state: AgentState) -> AgentState:
     )
 
     messages = [
-        SystemMessage(content=EXECUTE_SYSTEM_STATIC),
+        SystemMessage(content=system_prompt),
         SystemMessage(content=EXECUTE_CONTEXT_TEMPLATE.format(
             user_id=state["user_id"],
             user_name=state["user_name"],
@@ -242,7 +303,7 @@ async def execute_node(state: AgentState) -> AgentState:
     initial_llm = llm_with_tools.with_config(
         {"tags": ["execute_llm", "initial_pass"], "run_name": "initial_pass"}
     )
-    result = await initial_llm.ainvoke(messages)
+    result = await _stream_model(initial_llm, messages)
     latency = int((time.time() - start) * 1000)
 
     tool_calls = []
@@ -333,7 +394,7 @@ async def execute_node(state: AgentState) -> AgentState:
         synthesis_llm = llm_with_tools.with_config(
             {"tags": ["execute_llm", "synthesis"], "run_name": "synthesis_pass"}
         )
-        final_message = await synthesis_llm.ainvoke(synthesis_messages)
+        final_message = await _stream_model(synthesis_llm, synthesis_messages)
         latency += int((time.time() - synthesis_start) * 1000)
 
     final_content = final_message.content if isinstance(final_message.content, str) else str(final_message.content)
@@ -341,8 +402,7 @@ async def execute_node(state: AgentState) -> AgentState:
     # Infer intent from which tools were called
     inferred_intent = infer_intent_from_tool_calls(tool_calls)
 
-    # Only return the NEW messages this turn. LangGraph's add_messages reducer
-    # will automatically append them to the existing persisted history.
+    # Only return the NEW messages this turn.
     new_messages = [
         HumanMessage(content=state["raw_query"]),
         result,
@@ -377,7 +437,34 @@ async def execute_node(state: AgentState) -> AgentState:
     return state_update
 
 
-# ── Node 3: Evaluate (only for RAG responses) ────────────────────────────────
+# ── Node 3a: HR Specialist Agent ─────────────────────────────────────────────
+
+async def hr_agent_node(state: AgentState) -> AgentState:
+    """HR specialist — only sees HR tools and HR-focused system prompt."""
+    from app.tools import get_hr_tools_for_role
+    tools = get_hr_tools_for_role(state["user_role"])
+    return await _run_specialist(state, HR_AGENT_SYSTEM_STATIC, tools)
+
+
+# ── Node 3b: IT Specialist Agent ─────────────────────────────────────────────
+
+async def it_agent_node(state: AgentState) -> AgentState:
+    """IT specialist — only sees IT tools and IT-focused system prompt."""
+    from app.tools import get_it_tools_for_role
+    tools = get_it_tools_for_role(state["user_role"])
+    return await _run_specialist(state, IT_AGENT_SYSTEM_STATIC, tools)
+
+
+# ── Legacy fallback (kept for backwards compatibility) ───────────────────────
+
+async def execute_node(state: AgentState) -> AgentState:
+    """Unified execute node — fallback if router is bypassed."""
+    from app.tools import get_tools_for_role
+    tools = get_tools_for_role(state["user_role"])
+    return await _run_specialist(state, EXECUTE_SYSTEM_STATIC, tools)
+
+
+
 
 async def eval_node(state: AgentState) -> AgentState:
     if state.get("error"):
@@ -398,7 +485,7 @@ async def eval_node(state: AgentState) -> AgentState:
                                "rbac_compliant": True, "critique": ""}}
 
 
-def route_after_execute(state: AgentState) -> Literal["eval_node", "save_memory"]:
+def route_after_specialist(state: AgentState) -> Literal["eval_node", "save_memory"]:
     """Run evaluator only for RAG/policy responses; skip for tool actions."""
     if state.get("error"):
         return "save_memory"
@@ -413,8 +500,8 @@ def route_after_execute(state: AgentState) -> Literal["eval_node", "save_memory"
     return "save_memory"
 
 
-def route_after_eval(state: AgentState) -> Literal["execute_node", "save_memory"]:
-    """Bounded retry: re-run execute if eval score is low."""
+def route_after_eval(state: AgentState) -> Literal["hr_agent_node", "it_agent_node", "save_memory"]:
+    """Bounded retry: re-route to the correct specialist if eval score is low."""
     if state.get("error"):
         return "save_memory"
     if not state.get("response"):
@@ -426,7 +513,10 @@ def route_after_eval(state: AgentState) -> Literal["execute_node", "save_memory"
     if score < settings.GEPA_EVAL_THRESHOLD and retry_count < settings.GEPA_MAX_RETRIES:
         state["retry_count"] = retry_count + 1
         state["retry_critique"] = state.get("eval_score", {}).get("critique", "")
-        return "execute_node"
+        # Route back to whichever specialist originally handled this
+        if state.get("agent_used") == "it_agent":
+            return "it_agent_node"
+        return "hr_agent_node"
 
     return "save_memory"
 
@@ -442,11 +532,17 @@ async def save_memory_node(state: AgentState) -> AgentState:
         stmt = insert(UserMemory).values(
             user_id=state["user_id"],
             memory_key="last_agent_used",
-            memory_value={"intent": state.get("intent", "general.unknown")},
+            memory_value={
+                "intent": state.get("intent", "general.unknown"),
+                "agent": state.get("agent_used", "unknown"),
+            },
             source="inferred",
         ).on_conflict_do_update(
             index_elements=["user_id", "memory_key"],
-            set_={"memory_value": {"intent": state.get("intent", "general.unknown")},
+            set_={"memory_value": {
+                      "intent": state.get("intent", "general.unknown"),
+                      "agent": state.get("agent_used", "unknown"),
+                  },
                   "updated_at": func.now()},
         )
         await db.execute(stmt)
@@ -473,34 +569,52 @@ async def respond_node(state: AgentState) -> AgentState:
 # ── Build the graph ───────────────────────────────────────────────────────────
 
 def _build_graph() -> StateGraph:
-    """Build the simplified StateGraph (uncompiled).
+    """Build the Multi-Agent StateGraph (uncompiled).
 
-    New flow:
-      scope_gate → execute_node → (eval_node) → save_memory → respond → END
+    Flow:
+      scope_gate → router → (hr_agent | it_agent) → (eval) → save_memory → respond → END
     """
     graph = StateGraph(AgentState)
 
-    graph.add_node("scope_gate",    scope_gate_node)
-    graph.add_node("execute_node",  execute_node)
-    graph.add_node("eval_node",     eval_node)
-    graph.add_node("save_memory",   save_memory_node)
-    graph.add_node("respond",       respond_node)
+    # Nodes
+    graph.add_node("scope_gate",     scope_gate_node)
+    graph.add_node("router_node",    router_node)
+    graph.add_node("hr_agent_node",  hr_agent_node)
+    graph.add_node("it_agent_node",  it_agent_node)
+    graph.add_node("eval_node",      eval_node)
+    graph.add_node("save_memory",    save_memory_node)
+    graph.add_node("respond",        respond_node)
 
+    # Entry
     graph.set_entry_point("scope_gate")
 
+    # scope_gate → router OR respond (greetings)
     graph.add_conditional_edges("scope_gate", route_after_scope_gate, {
-        "execute_node": "execute_node",
-        "respond":      "respond",
+        "router_node": "router_node",
+        "respond":     "respond",
     })
 
-    graph.add_conditional_edges("execute_node", route_after_execute, {
+    # router → hr_agent OR it_agent
+    graph.add_conditional_edges("router_node", route_after_router, {
+        "hr_agent_node": "hr_agent_node",
+        "it_agent_node": "it_agent_node",
+    })
+
+    # Both specialists → eval OR save_memory
+    graph.add_conditional_edges("hr_agent_node", route_after_specialist, {
+        "eval_node":   "eval_node",
+        "save_memory": "save_memory",
+    })
+    graph.add_conditional_edges("it_agent_node", route_after_specialist, {
         "eval_node":   "eval_node",
         "save_memory": "save_memory",
     })
 
+    # eval → retry (back to correct specialist) OR save_memory
     graph.add_conditional_edges("eval_node", route_after_eval, {
-        "execute_node": "execute_node",
-        "save_memory":  "save_memory",
+        "hr_agent_node": "hr_agent_node",
+        "it_agent_node": "it_agent_node",
+        "save_memory":   "save_memory",
     })
 
     graph.add_edge("save_memory", "respond")

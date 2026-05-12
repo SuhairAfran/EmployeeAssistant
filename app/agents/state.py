@@ -29,11 +29,16 @@ Intent = Literal[
     "hr.leave_view_history",
     "hr.leave_cancel",
     "hr.leave_check_status",
+    "hr.leave_view_team",
+    "hr.leave_approve",
+    "hr.department_on_leave",
     # IT
     "it.ticket_create",
     "it.ticket_status",
     "it.asset_request",
     "it.ticket_view",
+    "it.knowledge_search",
+    "it.policy_query",
     # Finance
     "finance.payslip_fetch",
     "finance.reimbursement_submit",

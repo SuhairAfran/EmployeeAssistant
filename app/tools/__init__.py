@@ -8,10 +8,11 @@ from app.tools.it_rag_tools import build_it_policy_tool
 from app.tools.hr_tools import (
     get_leave_balance, apply_for_leave, cancel_leave,
     view_leave_history, view_team_leaves, view_department_on_leave_today,
+    approve_leave,
 )
 from app.tools.it_tools import (
     create_it_ticket, get_ticket_status, request_it_asset,
-    view_it_tickets, search_known_issues,
+    view_it_tickets, search_known_issues, resolve_it_ticket,
 )
 
 
@@ -26,6 +27,7 @@ TOOL_INTENT_MAP: dict[str, str] = {
     "view_leave_history":             "hr.leave_view_history",
     "view_team_leaves":               "hr.leave_view_team",
     "view_department_on_leave_today": "hr.department_on_leave",
+    "approve_leave":                  "hr.leave_approve",
     "search_hr_policies":             "hr.policy_query",
     "create_it_ticket":               "it.ticket_create",
     "get_ticket_status":              "it.ticket_status",
@@ -33,6 +35,7 @@ TOOL_INTENT_MAP: dict[str, str] = {
     "request_it_asset":               "it.asset_request",
     "search_known_issues":            "it.knowledge_search",
     "search_it_policies":             "it.policy_query",
+    "resolve_it_ticket":              "it.ticket_resolve",
 }
 
 # RAG tool names — used by the workflow to decide whether to run the evaluator.
@@ -66,6 +69,7 @@ def get_tools_for_role(user_role: UserRole) -> List[BaseTool]:
     # HR management tools (managers / admin / HR only)
     if user_role in (UserRole.manager, UserRole.admin, UserRole.hr_team):
         tools.append(view_team_leaves)
+        tools.append(approve_leave)
 
     # ── IT ──────────────────────────────────────────────────────────────
     tools.extend([
@@ -78,6 +82,54 @@ def get_tools_for_role(user_role: UserRole) -> List[BaseTool]:
 
     # ── Finance ─────────────────────────────────────────────────────────
     # Disabled: finance features are not yet available.
+
+    return tools
+
+
+def get_hr_tools_for_role(user_role: UserRole) -> List[BaseTool]:
+    """Return only HR-domain tools for the given role.
+
+    Used by the HR specialist agent in the multi-agent architecture.
+    """
+    tools: list[BaseTool] = []
+
+    # Leave self-service (all authenticated users)
+    tools.extend([
+        get_leave_balance, apply_for_leave, cancel_leave, view_leave_history,
+    ])
+
+    # Colleague status (all users)
+    tools.append(view_department_on_leave_today)
+
+    # HR policy RAG
+    tools.append(build_hr_policy_tool(user_role))
+
+    # HR management tools (managers / admin / HR only)
+    if user_role in (UserRole.manager, UserRole.admin, UserRole.hr_team):
+        tools.append(view_team_leaves)
+        tools.append(approve_leave)
+
+    return tools
+
+
+def get_it_tools_for_role(user_role: UserRole) -> List[BaseTool]:
+    """Return only IT-domain tools for the given role.
+
+    Used by the IT specialist agent in the multi-agent architecture.
+    """
+    tools: list[BaseTool] = []
+
+    tools.extend([
+        create_it_ticket, get_ticket_status, request_it_asset,
+        view_it_tickets, search_known_issues,
+    ])
+
+    # IT team / Admin can resolve tickets
+    if user_role in (UserRole.it_team, UserRole.admin):
+        tools.append(resolve_it_ticket)
+
+    # IT policy RAG
+    tools.append(build_it_policy_tool(user_role))
 
     return tools
 
