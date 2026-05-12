@@ -9,14 +9,14 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore",          # silently skip unknown env vars (e.g. LANGSMITH_*)
+        extra="ignore",
     )
 
     # ── App ─────────────────────────────────────────────────
     APP_NAME: str = "Employee Assistant"
-    APP_ENV: str = "development"             # development | staging | production
+    APP_ENV: str = "development"             
     DEBUG: bool = False
-    SECRET_KEY: str                          # used for JWT signing
+    SECRET_KEY: str
     ALLOWED_ORIGINS: list[str] = []
 
     # ── Database ─────────────────────────────────────────────
@@ -30,22 +30,13 @@ class Settings(BaseSettings):
     SESSION_TTL_SECONDS: int = 3600         # 1 hour idle timeout
 
     # ── LLM Providers ────────────────────────────────────────
-    OPENAI_API_KEY: str = ""                 # optional — only if using OpenAI models
+    OPENAI_API_KEY: str = ""                 
     ANTHROPIC_API_KEY: str = ""
-    XAI_API_KEY: str = ""                    # Grok (xAI)
-    GOOGLE_API_KEY: str = ""                 # Gemini
+    XAI_API_KEY: str = ""                    
+    GOOGLE_API_KEY: str = ""                 
     OPENAI_BASE_URL: str | None = None
     OPENAI_VERIFY_SSL: bool = True
 
-    # Dynamic routing: which model for which task
-    
-    # --- Gemini Models (Commented out) ---
-    # LLM_INTENT: str = "gemini-2.5-flash"    # fast, cheap intent classification
-    # LLM_HR: str = "gemini-2.5-pro"          # balanced for HR conversations
-    # LLM_IT: str = "gemini-2.5-flash"        # fast for IT support
-    # LLM_FINANCE: str = "gemini-2.5-pro"     # strong reasoning for calculations
-    # LLM_EVALUATOR: str = "gemini-2.5-flash" # GEPA self-evaluation node
-    
     # --- OpenAI Models (Active) ---
     LLM_INTENT: str = "gpt-4o-mini"
     LLM_HR: str = "gpt-4o-mini"        # mini is sufficient for RAG synthesis

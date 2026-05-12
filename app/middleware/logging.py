@@ -1,27 +1,3 @@
-"""
-Structured Request Logging Middleware
-=====================================
-Intercepts every HTTP request and emits a structured JSON log line with:
-  - method, path, status_code, duration_ms
-  - request_id (correlation ID for distributed tracing)
-  - client IP
-
-**Why structlog?**
-  Standard Python `logging` emits flat strings.  structlog produces key-value
-  JSON that is trivially parseable by log aggregation tools (Datadog, Loki,
-  CloudWatch, ELK).  In production, structured logs let you filter dashboards
-  by `status_code >= 500` or alert on `p99(duration_ms) > 800` without regex.
-
-**Why BaseHTTPMiddleware?**
-  It wraps the ASGI lifecycle at a high level, giving us access to the
-  full `Request` *and* `Response` objects.  This is the simplest way to
-  measure latency across all routes (including ones we don't own, like /docs).
-
-Usage:
-    # In app/main.py, *after* CORSMiddleware:
-    from app.middleware.logging import RequestLoggingMiddleware
-    app.add_middleware(RequestLoggingMiddleware)
-"""
 from __future__ import annotations
 
 import time

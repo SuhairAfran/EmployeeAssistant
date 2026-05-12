@@ -1,9 +1,6 @@
 -- ============================================================
 -- HR Leave Modules Seed Data
 -- ============================================================
--- This script resets and populates departments, users, holidays, and leave balances
--- Run this AFTER applying schema.sql changes (gender, is_married, miscarriage leave_type)
--- ============================================================
 
 ALTER TABLE users
     ADD COLUMN IF NOT EXISTS gender VARCHAR(10) NOT NULL DEFAULT 'male',
