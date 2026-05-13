@@ -33,7 +33,6 @@ from app.graph.prompts import (
 from app.middleware import RBACViolation
 from app.models import UserRole
 from app.tools import RAG_TOOL_NAMES, infer_intent_from_tool_calls
-from app.graph.audit import save_audit_log, _extract_entity
 
 
 # ── LLM factory ──────────────────────────────────────────────────────────────
@@ -135,7 +134,6 @@ async def router_node(state: AgentState) -> AgentState:
     elif domain == "IT":
         return {"route_to": "it_agent", "agent_used": "it_agent"}
     else:
-        # Default ambiguous queries to the HR agent (broader scope)
         return {"route_to": "hr_agent", "agent_used": "hr_agent"}
 
 
@@ -337,23 +335,7 @@ async def _run_specialist(state: AgentState, system_prompt: str, tools: list) ->
                         name=tc["name"],
                     ))
 
-                    # ── Audit: successful tool call ──────────────────────
-                    _ent_type, _ent_id = _extract_entity(tool_result)
-                    _is_error = isinstance(tool_result, dict) and tool_result.get("error")
-                    await save_audit_log(
-                        user_id=state["user_id"],
-                        session_id=state.get("session_id"),
-                        action=f"tool_call:{tc['name']}",
-                        tool_used=tc["name"],
-                        agent_used=state.get("agent_used"),
-                        llm_model=state.get("llm_model"),
-                        status="error" if _is_error else "success",
-                        error_message=str(tool_result.get("error")) if _is_error else None,
-                        latency_ms=tool_latency,
-                        entity_type=_ent_type,
-                        entity_id=_ent_id,
-                        metadata={"args": tc["args"]},
-                    )
+                    pass
 
                     if isinstance(tool_result, dict):
                         if tool_result.get("approval_required"):
@@ -383,19 +365,7 @@ async def _run_specialist(state: AgentState, system_prompt: str, tools: list) ->
                         tool_call_id=tc["id"],
                         name=tc["name"],
                     ))
-                    # ── Audit: RBAC violation ────────────────────────────
-                    await save_audit_log(
-                        user_id=state["user_id"],
-                        session_id=state.get("session_id"),
-                        action=f"rbac_violation:{tc['name']}",
-                        tool_used=tc["name"],
-                        agent_used=state.get("agent_used"),
-                        llm_model=state.get("llm_model"),
-                        status="rbac_denied",
-                        error_message=str(e),
-                        latency_ms=int((time.time() - tool_start) * 1000),
-                        metadata={"args": tc["args"]},
-                    )
+                    pass
                     return {
                         "error": str(e),
                         "response": str(e),
@@ -413,19 +383,7 @@ async def _run_specialist(state: AgentState, system_prompt: str, tools: list) ->
                         tool_call_id=tc["id"],
                         name=tc["name"],
                     ))
-                    # ── Audit: tool exception ────────────────────────────
-                    await save_audit_log(
-                        user_id=state["user_id"],
-                        session_id=state.get("session_id"),
-                        action=f"tool_error:{tc['name']}",
-                        tool_used=tc["name"],
-                        agent_used=state.get("agent_used"),
-                        llm_model=state.get("llm_model"),
-                        status="failed",
-                        error_message=str(e),
-                        latency_ms=int((time.time() - tool_start) * 1000),
-                        metadata={"args": tc["args"]},
-                    )
+                    pass
             else:
                 tool_messages.append(ToolMessage(
                     content=f"Tool '{tc['name']}' is not available.",
