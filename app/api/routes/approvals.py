@@ -43,7 +43,6 @@ class PendingItem(BaseModel):
     employee_name: str
     employee_designation: str | None
     submitted_at: datetime
-    # Type-specific fields (sparse — only the relevant ones populated)
     leave_type: str | None = None
     start_date: str | None = None
     end_date: str | None = None

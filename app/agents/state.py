@@ -52,7 +52,6 @@ Intent = Literal[
 RouteTo = Literal["hr_agent", "it_agent", "finance_agent", "rag_agent", "unknown"]
 
 
-# ── GEPA: planning and evaluation ─────────────────────────────────────────────
 
 class ActionPlan(TypedDict):
     """Written by the Plan node before tool execution."""
@@ -63,7 +62,7 @@ class ActionPlan(TypedDict):
 
 class EvalScore(TypedDict):
     """Written by the Evaluate node after response generation."""
-    score: float               # 0.0 – 1.0
+    score: float               
     relevance: float
     completeness: float
     rbac_compliant: bool

@@ -8,7 +8,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import structlog
 
-# Import your graph and database components
 from app.config import settings
 from app.database import AsyncSessionLocal, check_db_connection
 from app.graph.workflow import (
@@ -29,15 +28,13 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.approvals import router as approvals_router
 from app.api.routes.self_service import router as self_service_router
 
-# Set up structured logging
+
 logger = structlog.get_logger("app.lifecycle")
 
-# ── Lifespan (startup / shutdown) ─────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handles startup and shutdown events for the FastAPI application."""
-    # Startup: Load RBAC permissions (fail-open for local dev)
     try:
         async with AsyncSessionLocal() as db:
             await load_role_permissions(db)
@@ -45,14 +42,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("rbac_load_skipped", error=str(e), hint="RBAC permissions not loaded — admin role bypasses all checks")
 
-    # Redis: optional for local dev (rate limiter will fail-open)
     try:
         await setup_redis()
         logger.info("redis_connected")
     except Exception as e:
         logger.warning("redis_skipped", error=str(e), hint="Rate limiting disabled — Redis not available")
 
-    # LangGraph PostgreSQL checkpointer: makes chat history survive restarts.
     try:
         await init_workflow()
         logger.info("workflow_checkpointer_ready", backend="postgres")
@@ -65,9 +60,9 @@ async def lifespan(app: FastAPI):
 
     logger.info("startup_complete", app=settings.APP_NAME, env=settings.APP_ENV)
         
-    yield  # The app is running
+    yield
     
-    # Shutdown
+
     try:
         await close_workflow()
     except Exception:
@@ -78,8 +73,6 @@ async def lifespan(app: FastAPI):
         pass
     logger.info("shutdown_initiated", app=settings.APP_NAME)
 
-
-# ── App Initialization ────────────────────────────────────────────────────────
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -113,19 +106,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Rate Limiting via Redis Token Bucket
 app.add_middleware(RateLimitMiddleware)
 
-# Structured request logging
 app.add_middleware(RequestLoggingMiddleware)
 
-# ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(approvals_router)
 app.include_router(self_service_router)
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
     message: str
@@ -139,7 +128,6 @@ class ChatResponse(BaseModel):
     approval_required: bool
     metadata: dict
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["System"])
 async def health():
@@ -237,9 +225,3 @@ async def get_history(
     from app.graph.workflow import get_chat_history
     history = await get_chat_history(session_id)
     return {"messages": history}
-
-
-# Approvals are now handled by the dedicated routes/approvals.py router
-# (mounted above at /api/v1/approvals/*). The legacy /api/v1/approve
-# endpoint that resumed an interrupted LangGraph state has been removed in
-# favour of straightforward DB mutations.

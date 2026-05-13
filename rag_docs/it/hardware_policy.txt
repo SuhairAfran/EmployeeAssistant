@@ -1,5 +1,0 @@
-Enterprise IT Asset Request Policy
-
-1. Laptops: All full-time employees are provided with a standard company laptop. Requests for high-performance laptops (e.g., for developers or designers) require manager approval and justification.
-2. Replacements: Hardware can be requested for replacement if it is older than 3 years or critically damaged. 
-3. VPN Access: VPN tokens are provisioned automatically for remote workers. If you lose your token, you must report it immediately to IT support.
