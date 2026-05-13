@@ -319,7 +319,8 @@ async def apply_for_leave(user_id: str, start_date: date, end_date: date, leave_
             
             # Increment pending_days in leave balance (while balance is still attached)
             if lt not in ['unpaid', 'compensatory']:
-                balance.pending_days += adjusted_business_days
+                from decimal import Decimal
+                balance.pending_days += Decimal(str(adjusted_business_days))
                 
             # Commit once at the end
             await db.commit()
@@ -394,7 +395,8 @@ async def cancel_leave(user_id: str, leave_id: str) -> str:
                 balance = balance_result.scalar_one_or_none()
                 
                 if balance:
-                    balance.pending_days = max(0, balance.pending_days - leave_request.business_days)
+                    from decimal import Decimal
+                    balance.pending_days = max(Decimal('0'), balance.pending_days - Decimal(str(leave_request.business_days)))
             
             # Mark as cancelled
             leave_request.status = LeaveStatus.cancelled
@@ -688,13 +690,14 @@ async def approve_leave(
                 balance = balance_result.scalar_one_or_none()
 
                 if balance:
+                    from decimal import Decimal
                     # Always clear the pending days regardless of decision
                     balance.pending_days = max(
-                        0, balance.pending_days - leave_request.business_days
+                        Decimal('0'), balance.pending_days - Decimal(str(leave_request.business_days))
                     )
                     if decision == "approved":
                         # Move days into used
-                        balance.used_days += leave_request.business_days
+                        balance.used_days += Decimal(str(leave_request.business_days))
 
             await db.commit()
 
