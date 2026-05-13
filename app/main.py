@@ -1,3 +1,9 @@
+import sys
+import asyncio
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from contextlib import asynccontextmanager
 
 import json
@@ -94,7 +100,7 @@ for o in settings.ALLOWED_ORIGINS:
 
 # Always allow localhost:3000 in development
 if settings.DEBUG:
-    for dev_origin in ["http://localhost:3000", "http://127.0.0.1:3000"]:
+    for dev_origin in ["http://localhost:3000", "http://127.0.0.1:3000", "http://172.16.21.161:3000"]:
         if dev_origin not in _origins:
             _origins.append(dev_origin)
 

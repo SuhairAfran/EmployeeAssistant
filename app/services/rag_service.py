@@ -111,5 +111,5 @@ async def search_policy_context(
             )
         return formatted
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return f"Error retrieving documents: {exc}"

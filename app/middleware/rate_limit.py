@@ -12,9 +12,15 @@ redis_client: redis.Redis | None = None
 async def setup_redis():
     """Initialize Redis connection pool and verify connectivity."""
     global redis_client
-    redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
-    # Eagerly verify connectivity so startup logs a clear warning if Redis is down
-    await redis_client.ping()
+    temp_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+    try:
+        # Eagerly verify connectivity so startup logs a clear warning if Redis is down
+        await temp_client.ping()
+        redis_client = temp_client
+    except Exception as e:
+        await temp_client.aclose()
+        redis_client = None
+        raise e
 
 async def close_redis():
     """Close Redis connection."""

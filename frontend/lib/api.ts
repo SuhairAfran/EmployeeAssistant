@@ -45,6 +45,7 @@ async function apiFetch<T>(
     } catch {
       // response wasn't JSON — use statusText
     }
+    console.error(`\n[API FETCH ERROR] URL: ${url} | Status: ${response.status} | Detail: ${detail}\n`);
     throw new Error(`API Error (${response.status}): ${detail}`);
   }
 

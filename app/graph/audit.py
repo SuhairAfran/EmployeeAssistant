@@ -76,9 +76,10 @@ async def save_audit_log(
 
         now = datetime.now(timezone.utc)
 
+        from sqlalchemy import text
         async with AsyncSessionLocal() as db:
             await db.execute(
-                """
+                text("""
                 INSERT INTO audit_logs (
                     id, user_id, session_id,
                     action, entity_type, entity_id,
@@ -92,7 +93,7 @@ async def save_audit_log(
                     :status, :error_message, :latency_ms,
                     :ip_address::inet, :metadata, :created_at
                 )
-                """,
+                """),
                 {
                     "user_id":       user_id,
                     "session_id":    session_uuid,
